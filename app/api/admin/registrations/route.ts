@@ -25,19 +25,20 @@ export async function GET(request: NextRequest) {
       supabaseServiceKey || supabaseAnonKey
     );
 
-    // Fetch all registrations without pagination limit
-    // Supabase default limit is 1000, so we'll fetch in batches if needed
+    // Fetch all registrations efficiently
+    // Use larger batch size and fetch sequentially without expensive count checks
     let allData: any[] = [];
+    const batchSize = 5000; // Larger batch for better performance
     let from = 0;
-    const pageSize = 1000;
     let hasMore = true;
 
+    // Fetch all data in efficient batches
     while (hasMore) {
-      const { data, error, count } = await supabaseClient
+      const { data, error } = await supabaseClient
         .from('registrations')
-        .select('*', { count: 'exact' })
+        .select('*')
         .order('created_at', { ascending: false })
-        .range(from, from + pageSize - 1);
+        .range(from, from + batchSize - 1);
 
       if (error) {
         console.error('Supabase error fetching registrations:', error);
@@ -52,19 +53,16 @@ export async function GET(request: NextRequest) {
         );
       }
 
-      if (data) {
+      if (data && data.length > 0) {
         allData = [...allData, ...data];
-        console.log(`Fetched ${data.length} registrations (total: ${allData.length})`);
-      }
-
-      // Check if we've fetched all records
-      // Stop if we got fewer records than pageSize, or if we've fetched all records according to count
-      if (!data || data.length === 0 || data.length < pageSize) {
-        hasMore = false;
-      } else if (count !== null && allData.length >= count) {
-        hasMore = false;
+        // If we got fewer records than batch size, we've reached the end
+        if (data.length < batchSize) {
+          hasMore = false;
+        } else {
+          from += batchSize;
+        }
       } else {
-        from += pageSize;
+        hasMore = false;
       }
     }
 
