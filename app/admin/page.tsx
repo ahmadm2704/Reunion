@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Registration } from '@/lib/supabase';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -18,19 +18,124 @@ export default function AdminPortal() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordMessage, setPasswordMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const previousCountRef = useRef<number>(0);
   const router = useRouter();
 
+  // Enhanced fetchRegistrations with better error handling
+  const fetchRegistrations = useCallback(async (showSpinner = true) => {
+    if (showSpinner) setLoading(true);
+    setError(null);
+    
+    try {
+      const timestamp = new Date().getTime();
+      const response = await fetch(`/api/admin/registrations?t=${timestamp}`, {
+        method: 'GET',
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP ${response.status}: Failed to fetch registrations`);
+      }
+
+      const result = await response.json();
+      const fetchedData = result.data || [];
+
+      // Sort by creation date (newest first)
+      const sortedData = fetchedData.sort((a: Registration, b: Registration) => {
+        return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+      });
+
+      setRegistrations(sortedData);
+      setLastRefreshTime(new Date());
+      previousCountRef.current = sortedData.length;
+
+      console.log(`✅ Successfully fetched ${sortedData.length} registrations`);
+      
+      if (sortedData.length === 0) {
+        console.warn('⚠️ No registrations found - database may be empty');
+      }
+    } catch (error: any) {
+      console.error('❌ Error fetching registrations:', error);
+      setError(error.message || 'Failed to fetch registrations. Please try again.');
+      
+      // Only keep previous data on error if we have some
+      if (registrations.length === 0) {
+        setRegistrations([]);
+      }
+    } finally {
+      if (showSpinner) setLoading(false);
+    }
+  }, [registrations.length]);
+
+  // Check authentication on mount
   useEffect(() => {
-    // Check if already authenticated
     const authStatus = sessionStorage.getItem('admin_authenticated');
     if (authStatus === 'true') {
       setIsAuthenticated(true);
-      fetchRegistrations();
+      // Fetch immediately on mount
+      fetchRegistrations(false);
     }
   }, []);
 
+  // Real-time polling with smart refresh
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    // Clear any existing interval
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+    }
+
+    // Poll every 2 seconds for new registrations
+    pollingIntervalRef.current = setInterval(() => {
+      fetchRegistrations(false);
+    }, 2000);
+
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+      }
+    };
+  }, [isAuthenticated, fetchRegistrations]);
+
+  // Handle visibility change (tab switch)
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        console.log('📱 Tab is now visible - fetching latest data');
+        fetchRegistrations(false);
+      }
+    };
+
+    const handleFocus = () => {
+      console.log('🔄 Window focused - fetching latest data');
+      fetchRegistrations(false);
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [isAuthenticated, fetchRegistrations]);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
+    
     try {
       const response = await fetch('/api/admin', {
         method: 'POST',
@@ -43,45 +148,18 @@ export default function AdminPortal() {
       if (response.ok && data.success) {
         setIsAuthenticated(true);
         sessionStorage.setItem('admin_authenticated', 'true');
-        fetchRegistrations();
+        setPassword('');
+        await fetchRegistrations(false);
       } else {
-        alert(data.error || 'Invalid password');
+        setError(data.error || 'Invalid password');
       }
-    } catch (error) {
-      alert('Error logging in. Please try again.');
-    }
-  };
-
-  const fetchRegistrations = async () => {
-    setLoading(true);
-    try {
-      // Add timestamp to prevent caching
-      const timestamp = new Date().getTime();
-      const response = await fetch(`/api/admin/registrations?t=${timestamp}`, {
-        cache: 'no-store',
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache',
-          'Expires': '0',
-        },
-      });
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to fetch registrations');
-      }
-
-      setRegistrations(result.data || []);
     } catch (error: any) {
-      console.error('Error fetching registrations:', error);
-      alert('Error fetching registrations: ' + error.message);
-    } finally {
-      setLoading(false);
+      setError(error.message || 'Error logging in. Please try again.');
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this registration?')) return;
+  const handleDelete = async (id: string, name: string) => {
+    if (!confirm(`Are you sure you want to delete the registration for ${name}?`)) return;
 
     // Optimistically remove from UI
     const previousRegistrations = registrations;
@@ -95,6 +173,9 @@ export default function AdminPortal() {
     try {
       const response = await fetch(`/api/admin/registrations/${id}`, {
         method: 'DELETE',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+        },
         cache: 'no-store',
       });
 
@@ -103,15 +184,19 @@ export default function AdminPortal() {
       if (!response.ok) {
         // Restore previous state on error
         setRegistrations(previousRegistrations);
+        setError(result.error || 'Failed to delete registration');
         throw new Error(result.error || 'Failed to delete registration');
       }
 
-      // Refresh from server to ensure consistency
-      await fetchRegistrations();
+      console.log(`✅ Successfully deleted registration ${id}`);
+      
+      // Fetch fresh data to ensure consistency
+      await fetchRegistrations(false);
     } catch (error: any) {
       // Restore previous state on error
       setRegistrations(previousRegistrations);
-      alert('Error deleting registration: ' + error.message);
+      setError(error.message || 'Error deleting registration');
+      console.error('❌ Error deleting registration:', error);
     }
   };
 
@@ -164,7 +249,6 @@ export default function AdminPortal() {
       return;
     }
 
-    // Define CSV headers
     const headers = [
       'Full Name',
       'Kit Number',
@@ -181,7 +265,6 @@ export default function AdminPortal() {
       'Registered On'
     ];
 
-    // Convert registrations to CSV rows
     const csvRows = registrations.map(reg => {
       const row = [
         `"${(reg.full_name || '').replace(/"/g, '""')}"`,
@@ -201,22 +284,18 @@ export default function AdminPortal() {
       return row.join(',');
     });
 
-    // Combine headers and rows
     const csvContent = [
       headers.join(','),
       ...csvRows
     ].join('\n');
 
-    // Add BOM for UTF-8 (helps Excel open it correctly)
     const BOM = '\uFEFF';
     const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
     
-    // Create download link
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
     
-    // Generate filename with current date
     const date = new Date().toISOString().split('T')[0];
     link.setAttribute('download', `kohatians-registrations-${date}.csv`);
     
@@ -233,22 +312,15 @@ export default function AdminPortal() {
     reg.car_number_plate.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Pagination settings
   const itemsPerPage = 20;
   const totalPages = Math.ceil(filteredRegistrations.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
   const paginatedRegistrations = filteredRegistrations.slice(startIndex, endIndex);
 
-  // Reset to page 1 when search term changes
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm]);
-
-  // Reset to page 1 when registrations change
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [registrations.length]);
 
   const totalCount = registrations.length;
   const attendingCount = registrations.filter(r => r.attend_gala === 'Yes').length;
@@ -256,24 +328,19 @@ export default function AdminPortal() {
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-indigo-950 via-purple-900 via-pink-900 to-indigo-950 flex items-center justify-center px-4 relative overflow-hidden">
-        {/* Animated background elements */}
         <div className="absolute inset-0 overflow-hidden">
           <div className="absolute -top-40 -right-40 w-80 h-80 bg-purple-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
           <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-indigo-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-2000"></div>
           <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-80 h-80 bg-pink-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-4000"></div>
         </div>
         
-        {/* Pattern overlay */}
         <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxwYXRoIGQ9Ik0zNiAzNGMwIDIuMjA5LTEuNzkxIDQtNCA0cy00LTEuNzkxLTQtNCAxLjc5MS00IDQtNCA0IDEuNzkxIDQgNHoiIGZpbGw9IiNmZmYiIG9wYWNpdHk9Ii4wMyIvPjwvZz48L3N2Zz4=')] opacity-10"></div>
         
-        {/* Main login card */}
         <div className="relative z-10 bg-white/5 backdrop-blur-2xl rounded-3xl shadow-2xl p-8 md:p-10 max-w-md w-full border border-white/10 animate-slide-in">
-          {/* Glow effect */}
           <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/20 via-purple-500/20 to-pink-500/20 rounded-3xl blur-xl"></div>
           
           <div className="relative z-10">
             <div className="text-center mb-8">
-              {/* Lock icon with glow */}
               <div className="inline-flex items-center justify-center mb-6">
                 <div className="absolute w-20 h-20 bg-gradient-to-br from-indigo-500/30 to-purple-600/30 rounded-2xl blur-xl"></div>
                 <div className="relative p-5 bg-gradient-to-br from-indigo-500/20 to-purple-600/20 backdrop-blur-sm rounded-2xl border border-white/20 shadow-2xl">
@@ -289,6 +356,12 @@ export default function AdminPortal() {
               <div className="h-1 w-20 bg-gradient-to-r from-transparent via-indigo-400 to-transparent mx-auto mb-3"></div>
               <p className="text-gray-300 text-sm md:text-base">Enter your password to continue</p>
             </div>
+
+            {error && (
+              <div className="mb-4 p-3 bg-red-900/30 text-red-300 border border-red-500/30 rounded-lg text-sm">
+                {error}
+              </div>
+            )}
             
             <form onSubmit={handleLogin} className="space-y-6">
               <div className="group">
@@ -323,26 +396,9 @@ export default function AdminPortal() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
                   </svg>
                 </span>
-                <div className="absolute inset-0 bg-gradient-to-r from-indigo-700 via-purple-700 to-pink-700 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
               </button>
             </form>
           </div>
-        </div>
-        
-        {/* Floating particles effect */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          {[...Array(20)].map((_, i) => (
-            <div
-              key={i}
-              className="absolute w-2 h-2 bg-white/20 rounded-full animate-float"
-              style={{
-                left: `${Math.random() * 100}%`,
-                top: `${Math.random() * 100}%`,
-                animationDelay: `${Math.random() * 5}s`,
-                animationDuration: `${5 + Math.random() * 5}s`,
-              }}
-            />
-          ))}
         </div>
       </div>
     );
@@ -351,6 +407,26 @@ export default function AdminPortal() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-indigo-900 py-8 px-4">
       <div className="max-w-7xl mx-auto">
+        {/* Error Banner */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-900/30 text-red-300 border-l-4 border-red-500 rounded-lg flex items-start justify-between">
+            <div className="flex items-start gap-3">
+              <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4v2m0-11a9 9 0 110 18 9 9 0 010-18z" />
+              </svg>
+              <div>
+                <p className="font-semibold">Error</p>
+                <p className="text-sm">{error}</p>
+              </div>
+            </div>
+            <button onClick={() => setError(null)} className="text-red-300 hover:text-red-200">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        )}
+
         <div className="bg-gray-800/90 backdrop-blur-xl rounded-3xl shadow-2xl p-6 md:p-8 mb-6 border border-gray-700/50">
           <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
             <div>
@@ -379,6 +455,7 @@ export default function AdminPortal() {
             </div>
           </div>
 
+          {/* Statistics Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
             <div className="bg-gradient-to-br from-blue-900/30 to-indigo-900/30 p-6 rounded-2xl border-2 border-blue-700/50 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
               <div className="flex items-center justify-between mb-2">
@@ -391,6 +468,7 @@ export default function AdminPortal() {
               </div>
               <p className="text-4xl font-extrabold text-blue-400">{totalCount}</p>
             </div>
+
             <div className="bg-gradient-to-br from-green-900/30 to-emerald-900/30 p-6 rounded-2xl border-2 border-green-700/50 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">Attending Gala</h3>
@@ -402,6 +480,7 @@ export default function AdminPortal() {
               </div>
               <p className="text-4xl font-extrabold text-green-400">{attendingCount}</p>
             </div>
+
             <div className="bg-gradient-to-br from-yellow-900/30 to-amber-900/30 p-6 rounded-2xl border-2 border-yellow-700/50 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">Not Attending</h3>
@@ -415,8 +494,9 @@ export default function AdminPortal() {
             </div>
           </div>
 
+          {/* Search and Action Buttons */}
           <div className="mb-4">
-            <div className="relative">
+            <div className="relative mb-4">
               <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                 <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -432,42 +512,55 @@ export default function AdminPortal() {
             </div>
           </div>
 
-          <div className="flex gap-3 flex-wrap">
-            <button
-              onClick={fetchRegistrations}
-              disabled={loading}
-              className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl font-semibold shadow-lg hover:shadow-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105 active:scale-95 flex items-center gap-2"
-            >
-              {loading ? (
-                <>
-                  <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Loading...
-                </>
-              ) : (
-                <>
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  Refresh
-                </>
-              )}
-            </button>
-            <button
-              onClick={handleDownloadCSV}
-              disabled={registrations.length === 0}
-              className="bg-gradient-to-r from-blue-500 to-cyan-600 text-white px-6 py-3 rounded-xl font-semibold shadow-lg hover:shadow-xl hover:from-blue-600 hover:to-cyan-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105 active:scale-95 flex items-center gap-2"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              Download CSV
-            </button>
+          <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
+            <div className="flex gap-3 flex-wrap">
+              <button
+                onClick={() => fetchRegistrations(true)}
+                disabled={loading}
+                className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl font-semibold shadow-lg hover:shadow-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105 active:scale-95 flex items-center gap-2"
+              >
+                {loading ? (
+                  <>
+                    <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Fetching...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Refresh Now
+                  </>
+                )}
+              </button>
+              <button
+                onClick={handleDownloadCSV}
+                disabled={registrations.length === 0}
+                className="bg-gradient-to-r from-blue-500 to-cyan-600 text-white px-6 py-3 rounded-xl font-semibold shadow-lg hover:shadow-xl hover:from-blue-600 hover:to-cyan-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105 active:scale-95 flex items-center gap-2"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Download CSV ({totalCount})
+              </button>
+            </div>
+            
+            {lastRefreshTime && (
+              <div className="flex items-center gap-2 text-xs text-gray-400">
+                <svg className="w-4 h-4 animate-pulse text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>Last updated: {lastRefreshTime.toLocaleTimeString()}</span>
+                <span className="text-green-400 font-semibold">• Auto-refreshing every 2s</span>
+              </div>
+            )}
           </div>
         </div>
 
+        {/* Registrations Table */}
         <div className="bg-gray-800/90 backdrop-blur-xl rounded-3xl shadow-2xl overflow-hidden border border-gray-700/50">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-700">
@@ -483,10 +576,13 @@ export default function AdminPortal() {
                     Kit Number
                   </th>
                   <th className="px-6 py-4 text-left text-xs font-bold text-gray-300 uppercase tracking-wider">
-                    WhatsApp Number
+                    WhatsApp
                   </th>
                   <th className="px-6 py-4 text-left text-xs font-bold text-gray-300 uppercase tracking-wider">
-                    Car Number Plate
+                    Car Number
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-bold text-gray-300 uppercase tracking-wider">
+                    Attending
                   </th>
                   <th className="px-6 py-4 text-left text-xs font-bold text-gray-300 uppercase tracking-wider">
                     Actions
@@ -495,7 +591,7 @@ export default function AdminPortal() {
               </thead>
               <tbody className="bg-gray-800 divide-y divide-gray-700">
                 {paginatedRegistrations.map((reg, index) => (
-                  <tr key={reg.id} className="hover:bg-gradient-to-r hover:from-indigo-900/30 hover:to-purple-900/30 transition-all duration-200 animate-slide-in" style={{ animationDelay: `${index * 0.05}s` }}>
+                  <tr key={reg.id} className="hover:bg-gradient-to-r hover:from-indigo-900/30 hover:to-purple-900/30 transition-all duration-200" style={{ animationDelay: `${index * 0.05}s` }}>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {reg.photo_url ? (
                         <div className="relative">
@@ -521,10 +617,21 @@ export default function AdminPortal() {
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                      {reg.whatsapp_number}
+                      <a href={`tel:${reg.whatsapp_number}`} className="hover:text-indigo-400 transition-colors">
+                        {reg.whatsapp_number}
+                      </a>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
                       {reg.car_number_plate}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${
+                        reg.attend_gala === 'Yes'
+                          ? 'bg-green-600/30 text-green-300 border border-green-500/30'
+                          : 'bg-red-600/30 text-red-300 border border-red-500/30'
+                      }`}>
+                        {reg.attend_gala}
+                      </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex gap-2">
@@ -532,10 +639,10 @@ export default function AdminPortal() {
                           onClick={() => setSelectedRegistration(reg)}
                           className="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-lg hover:from-blue-600 hover:to-indigo-700 transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105 active:scale-95 text-xs font-semibold"
                         >
-                          More
+                          View
                         </button>
                         <button
-                          onClick={() => handleDelete(reg.id!)}
+                          onClick={() => handleDelete(reg.id!, reg.full_name)}
                           className="px-4 py-2 bg-gradient-to-r from-red-500 to-rose-600 text-white rounded-lg hover:from-red-600 hover:to-rose-700 transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105 active:scale-95 text-xs font-semibold"
                         >
                           Delete
@@ -547,6 +654,7 @@ export default function AdminPortal() {
               </tbody>
             </table>
           </div>
+
           {filteredRegistrations.length === 0 && (
             <div className="text-center py-16">
               <div className="inline-block p-4 bg-gray-700 rounded-full mb-4">
@@ -555,28 +663,25 @@ export default function AdminPortal() {
                 </svg>
               </div>
               <p className="text-gray-400 text-lg font-medium">
-                {searchTerm ? 'No registrations found matching your search.' : 'No registrations yet.'}
+                {searchTerm ? 'No registrations found matching your search.' : 'No registrations yet. Registrations will appear here when users submit the form.'}
               </p>
             </div>
           )}
 
-          {/* Pagination Controls */}
-          {filteredRegistrations.length > 0 && (
+          {/* Pagination */}
+          {filteredRegistrations.length > itemsPerPage && (
             <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 bg-gray-800/50 border-t border-gray-700/50">
               <div className="text-sm text-gray-400">
                 Showing <span className="font-semibold text-white">{startIndex + 1}</span> to{' '}
                 <span className="font-semibold text-white">{Math.min(endIndex, filteredRegistrations.length)}</span> of{' '}
-                <span className="font-semibold text-white">{filteredRegistrations.length}</span> entries
-                {searchTerm && (
-                  <span className="ml-2 text-indigo-400">(filtered from {registrations.length} total)</span>
-                )}
+                <span className="font-semibold text-white">{filteredRegistrations.length}</span> registrations
               </div>
               
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                   disabled={currentPage === 1}
-                  className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-md flex items-center gap-2"
+                  className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -616,7 +721,7 @@ export default function AdminPortal() {
                 <button
                   onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
                   disabled={currentPage === totalPages}
-                  className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-md flex items-center gap-2"
+                  className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
                   Next
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -629,9 +734,9 @@ export default function AdminPortal() {
         </div>
       </div>
 
-      {/* More Details Modal */}
+      {/* Registration Details Modal */}
       {selectedRegistration && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-slide-in">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-gray-800/95 backdrop-blur-xl rounded-3xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto border border-gray-700/50">
             <div className="p-8">
               <div className="flex justify-between items-center mb-6">
@@ -639,7 +744,6 @@ export default function AdminPortal() {
                   <h2 className="text-3xl font-extrabold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
                     Registration Details
                   </h2>
-                  <p className="text-gray-400 text-sm mt-1">Complete information for this registration</p>
                 </div>
                 <button
                   onClick={() => setSelectedRegistration(null)}
@@ -651,37 +755,34 @@ export default function AdminPortal() {
                 </button>
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-6">
                 {selectedRegistration.photo_url && (
-                  <div className="flex justify-center mb-4">
-                    <div className="relative">
-                      <div className="absolute inset-0 bg-gradient-to-br from-indigo-400 to-purple-500 rounded-full blur-xl opacity-30"></div>
-                      <Image
-                        src={selectedRegistration.photo_url}
-                        alt={selectedRegistration.full_name}
-                        width={150}
-                        height={150}
-                        className="relative rounded-full object-cover border-4 border-gray-600 shadow-xl"
-                      />
-                    </div>
+                  <div className="flex justify-center">
+                    <Image
+                      src={selectedRegistration.photo_url}
+                      alt={selectedRegistration.full_name}
+                      width={150}
+                      height={150}
+                      className="rounded-full object-cover border-4 border-indigo-500/50 shadow-xl"
+                    />
                   </div>
                 )}
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label className="text-sm font-medium text-gray-400">Full Name</label>
-                    <p className="text-gray-200 font-semibold">{selectedRegistration.full_name}</p>
+                    <p className="text-gray-200 font-semibold text-lg">{selectedRegistration.full_name}</p>
                   </div>
                   <div>
                     <label className="text-sm font-medium text-gray-400">Kit Number</label>
-                    <p className="text-gray-200 font-semibold">{selectedRegistration.kit_number}</p>
+                    <p className="text-gray-200 font-semibold text-lg">{selectedRegistration.kit_number}</p>
                   </div>
                   <div>
                     <label className="text-sm font-medium text-gray-400">Email</label>
                     <p className="text-gray-300">{selectedRegistration.email}</p>
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-gray-400">WhatsApp Number</label>
+                    <label className="text-sm font-medium text-gray-400">WhatsApp</label>
                     <p className="text-gray-300">{selectedRegistration.whatsapp_number}</p>
                   </div>
                   <div>
@@ -698,13 +799,13 @@ export default function AdminPortal() {
                   </div>
                   <div>
                     <label className="text-sm font-medium text-gray-400">Attending Gala</label>
-                    <p className="text-gray-300">
-                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                        selectedRegistration.attend_gala === 'Yes' ? 'bg-green-600/30 text-green-300 border border-green-500/30' : 'bg-red-600/30 text-red-300 border border-red-500/30'
-                      }`}>
-                        {selectedRegistration.attend_gala}
-                      </span>
-                    </p>
+                    <span className={`inline-block px-4 py-2 rounded-full text-sm font-semibold ${
+                      selectedRegistration.attend_gala === 'Yes'
+                        ? 'bg-green-600/30 text-green-300 border border-green-500/30'
+                        : 'bg-red-600/30 text-red-300 border border-red-500/30'
+                    }`}>
+                      {selectedRegistration.attend_gala}
+                    </span>
                   </div>
                   <div>
                     <label className="text-sm font-medium text-gray-400">Morale</label>
@@ -729,9 +830,9 @@ export default function AdminPortal() {
                 </div>
               </div>
 
-              <div className="mt-6 flex justify-end gap-2">
+              <div className="mt-8 flex justify-end gap-3">
                 <button
-                  onClick={() => handleDelete(selectedRegistration.id!)}
+                  onClick={() => handleDelete(selectedRegistration.id!, selectedRegistration.full_name)}
                   className="bg-gradient-to-r from-red-600 to-rose-600 text-white px-6 py-3 rounded-xl font-semibold hover:from-red-700 hover:to-rose-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95"
                 >
                   Delete Registration
@@ -750,16 +851,13 @@ export default function AdminPortal() {
 
       {/* Change Password Modal */}
       {showPasswordModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-slide-in">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-gray-800/95 backdrop-blur-xl rounded-3xl shadow-2xl max-w-md w-full border border-gray-700/50">
             <div className="p-8">
               <div className="flex justify-between items-center mb-6">
-                <div>
-                  <h2 className="text-2xl font-extrabold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
-                    Change Password
-                  </h2>
-                  <p className="text-gray-400 text-sm mt-1">Update your admin password</p>
-                </div>
+                <h2 className="text-2xl font-extrabold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
+                  Change Password
+                </h2>
                 <button
                   onClick={() => {
                     setShowPasswordModal(false);
@@ -787,13 +885,10 @@ export default function AdminPortal() {
                   </div>
                 )}
 
-                <div className="group">
-                  <label htmlFor="currentPassword" className="block text-sm font-semibold text-gray-300 mb-2 group-focus-within:text-indigo-400 transition-colors">
-                    Current Password
-                  </label>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-300 mb-2">Current Password</label>
                   <input
                     type="password"
-                    id="currentPassword"
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
                     className="w-full px-4 py-3 border-2 border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-gray-700/50 text-white backdrop-blur-sm hover:border-gray-500"
@@ -801,13 +896,10 @@ export default function AdminPortal() {
                   />
                 </div>
 
-                <div className="group">
-                  <label htmlFor="newPassword" className="block text-sm font-semibold text-gray-300 mb-2 group-focus-within:text-indigo-400 transition-colors">
-                    New Password
-                  </label>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-300 mb-2">New Password</label>
                   <input
                     type="password"
-                    id="newPassword"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     className="w-full px-4 py-3 border-2 border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-gray-700/50 text-white backdrop-blur-sm hover:border-gray-500"
@@ -816,13 +908,10 @@ export default function AdminPortal() {
                   />
                 </div>
 
-                <div className="group">
-                  <label htmlFor="confirmPassword" className="block text-sm font-semibold text-gray-300 mb-2 group-focus-within:text-indigo-400 transition-colors">
-                    Confirm New Password
-                  </label>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-300 mb-2">Confirm New Password</label>
                   <input
                     type="password"
-                    id="confirmPassword"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     className="w-full px-4 py-3 border-2 border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-gray-700/50 text-white backdrop-blur-sm hover:border-gray-500"
@@ -841,13 +930,13 @@ export default function AdminPortal() {
                       setConfirmPassword('');
                       setPasswordMessage(null);
                     }}
-                    className="bg-gray-700 text-white px-6 py-3 rounded-xl font-semibold hover:bg-gray-600 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95"
+                    className="bg-gray-700 text-white px-6 py-3 rounded-xl font-semibold hover:bg-gray-600 transition-all duration-300"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl font-semibold hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95"
+                    className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl font-semibold hover:from-indigo-700 hover:to-purple-700 transition-all duration-300"
                   >
                     Change Password
                   </button>

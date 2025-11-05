@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
+// Cache for tracking database state
+let lastFetchTime = 0;
+let cachedData: any[] = [];
+const CACHE_DURATION = 500; // 500ms cache to avoid excessive DB hits
+
 export async function GET(request: NextRequest) {
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -19,67 +24,80 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Use service role key if available, otherwise use anon key
+    // Use service role key if available for better access
     const supabaseClient = createClient(
       supabaseUrl,
       supabaseServiceKey || supabaseAnonKey
     );
 
-    // Fetch all registrations efficiently
-    // Use larger batch size and fetch sequentially without expensive count checks
-    let allData: any[] = [];
-    const batchSize = 5000; // Larger batch for better performance
-    let from = 0;
-    let hasMore = true;
-
-    // Fetch all data in efficient batches
-    while (hasMore) {
-      const { data, error } = await supabaseClient
-        .from('registrations')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .range(from, from + batchSize - 1);
-
-      if (error) {
-        console.error('Supabase error fetching registrations:', error);
-        return NextResponse.json(
-          { error: error.message || 'Failed to fetch registrations' },
-          { 
-            status: 500,
-            headers: {
-              'Cache-Control': 'no-store, no-cache, must-revalidate',
-            }
+    const now = Date.now();
+    
+    // Use cache if recent
+    if (now - lastFetchTime < CACHE_DURATION && cachedData.length > 0) {
+      console.log(`📦 Returning cached data (${cachedData.length} records)`);
+      return NextResponse.json(
+        { data: cachedData },
+        {
+          headers: {
+            'Cache-Control': 'no-store, no-cache, must-revalidate',
           }
-        );
-      }
-
-      if (data && data.length > 0) {
-        allData = [...allData, ...data];
-        // If we got fewer records than batch size, we've reached the end
-        if (data.length < batchSize) {
-          hasMore = false;
-        } else {
-          from += batchSize;
         }
-      } else {
-        hasMore = false;
-      }
+      );
     }
 
-    console.log(`Total registrations fetched: ${allData.length}`);
+    console.log('🔄 Fetching fresh data from Supabase...');
+
+    // Fetch all registrations in one query
+    const { data, error, count } = await supabaseClient
+      .from('registrations')
+      .select('*', { count: 'exact' })
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('❌ Supabase error:', error);
+      return NextResponse.json(
+        { 
+          error: error.message || 'Failed to fetch registrations',
+          details: error 
+        },
+        { 
+          status: 500,
+          headers: {
+            'Cache-Control': 'no-store, no-cache, must-revalidate',
+          }
+        }
+      );
+    }
+
+    const allData = data || [];
+    
+    // Update cache
+    cachedData = allData;
+    lastFetchTime = now;
+
+    console.log(`✅ Successfully fetched ${allData.length} registrations (Total in DB: ${count})`);
 
     return NextResponse.json(
-      { data: allData || [] },
+      { 
+        data: allData,
+        count: count,
+        timestamp: new Date().toISOString()
+      },
       {
         headers: {
           'Cache-Control': 'no-store, no-cache, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
         }
       }
     );
   } catch (error: any) {
-    console.error('Error fetching registrations:', error);
+    console.error('❌ API Error:', error);
     return NextResponse.json(
-      { error: error.message || 'Internal server error' },
+      { 
+        error: error.message || 'Internal server error',
+        details: error.toString()
+      },
       { 
         status: 500,
         headers: {
@@ -90,4 +108,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-
+// Optional: Export runtime config
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
