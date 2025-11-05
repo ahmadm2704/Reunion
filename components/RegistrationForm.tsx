@@ -118,7 +118,7 @@ export default function RegistrationForm() {
           car_number_plate: formData.car_number_plate.trim() || 'N/A',
           house: formData.house,
           profession: formData.profession.trim(),
-          postal_address: formData.postal_address.trim(),
+          postal_address: formData.postal_address.trim() || '',
           attend_gala: formData.attend_gala,
           morale: formData.morale,
           excited_for_gala: formData.excited_for_gala,
@@ -262,14 +262,13 @@ export default function RegistrationForm() {
 
         <div className="group">
           <label htmlFor="car_number_plate" className="block text-sm font-semibold text-gray-300 mb-2 group-focus-within:text-indigo-400 transition-colors">
-            Car Number Plate <span className="text-red-400">*</span>
+            Car Number Plate <span className="text-gray-500 text-xs">(Optional)</span>
           </label>
           <input
             type="text"
             id="car_number_plate"
             name="car_number_plate"
-            required
-            placeholder="Enter plate number or N/A"
+            placeholder="Enter plate number or leave empty"
             value={formData.car_number_plate}
             onChange={handleInputChange}
             className="w-full px-4 py-3 border-2 border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-gray-700/50 text-white placeholder-gray-400 backdrop-blur-sm hover:border-gray-500"
@@ -315,12 +314,11 @@ export default function RegistrationForm() {
 
         <div className="md:col-span-2 group">
           <label htmlFor="postal_address" className="block text-sm font-semibold text-gray-300 mb-2 group-focus-within:text-indigo-400 transition-colors">
-            Postal Address <span className="text-red-400">*</span>
+            Postal Address <span className="text-gray-500 text-xs">(Optional)</span>
           </label>
           <textarea
             id="postal_address"
             name="postal_address"
-            required
             rows={3}
             value={formData.postal_address}
             onChange={handleInputChange}
