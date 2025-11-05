@@ -90,3 +90,10 @@ ON registrations FOR DELETE
 TO service_role
 USING (true);
 
+-- Allow service role to update registrations (for admin API)
+CREATE POLICY "Allow service role updates"
+ON registrations FOR UPDATE
+TO service_role
+USING (true)
+WITH CHECK (true);
+

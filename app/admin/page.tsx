@@ -12,6 +12,10 @@ export default function AdminPortal() {
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRegistration, setSelectedRegistration] = useState<Registration | null>(null);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editData, setEditData] = useState<Partial<Registration>>({});
+  const [editLoading, setEditLoading] = useState(false);
+  const [editMessage, setEditMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -67,7 +71,6 @@ export default function AdminPortal() {
       console.error('❌ Error fetching registrations:', error);
       setError(error.message || 'Failed to fetch registrations. Please try again.');
       
-      // Only keep previous data on error if we have some
       if (registrations.length === 0) {
         setRegistrations([]);
       }
@@ -81,7 +84,6 @@ export default function AdminPortal() {
     const authStatus = sessionStorage.getItem('admin_authenticated');
     if (authStatus === 'true') {
       setIsAuthenticated(true);
-      // Fetch immediately on mount
       fetchRegistrations(false);
     }
   }, []);
@@ -90,12 +92,10 @@ export default function AdminPortal() {
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    // Clear any existing interval
     if (pollingIntervalRef.current) {
       clearInterval(pollingIntervalRef.current);
     }
 
-    // Poll every 2 seconds for new registrations
     pollingIntervalRef.current = setInterval(() => {
       fetchRegistrations(false);
     }, 2000);
@@ -158,14 +158,81 @@ export default function AdminPortal() {
     }
   };
 
+  // Edit Handler
+  const handleEditClick = (registration: Registration) => {
+    setEditData({ ...registration });
+    setIsEditMode(true);
+    setEditMessage(null);
+  };
+
+  const handleEditChange = (field: string, value: any) => {
+    setEditData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handleSaveEdit = async () => {
+    if (!selectedRegistration?.id) return;
+
+    setEditLoading(true);
+    setEditMessage(null);
+
+    try {
+      const response = await fetch(`/api/admin/registrations/${selectedRegistration.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+        },
+        body: JSON.stringify(editData),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to update registration');
+      }
+
+      setEditMessage({ type: 'success', text: 'Registration updated successfully!' });
+      
+      // Update local state
+      setRegistrations(prev => prev.map(reg => 
+        reg.id === selectedRegistration.id 
+          ? { ...reg, ...editData }
+          : reg
+      ));
+
+      setSelectedRegistration(prev => 
+        prev ? { ...prev, ...editData } : null
+      );
+
+      setTimeout(() => {
+        setIsEditMode(false);
+        setEditMessage(null);
+      }, 2000);
+
+      await fetchRegistrations(false);
+    } catch (error: any) {
+      console.error('❌ Error updating registration:', error);
+      setEditMessage({ type: 'error', text: error.message || 'Failed to update registration' });
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditMode(false);
+    setEditData({});
+    setEditMessage(null);
+  };
+
   const handleDelete = async (id: string, name: string) => {
     if (!confirm(`Are you sure you want to delete the registration for ${name}?`)) return;
 
-    // Optimistically remove from UI
     const previousRegistrations = registrations;
     setRegistrations(prev => prev.filter(reg => reg.id !== id));
     
-    // Close modal if this registration was selected
     if (selectedRegistration?.id === id) {
       setSelectedRegistration(null);
     }
@@ -182,18 +249,14 @@ export default function AdminPortal() {
       const result = await response.json();
 
       if (!response.ok) {
-        // Restore previous state on error
         setRegistrations(previousRegistrations);
         setError(result.error || 'Failed to delete registration');
         throw new Error(result.error || 'Failed to delete registration');
       }
 
       console.log(`✅ Successfully deleted registration ${id}`);
-      
-      // Fetch fresh data to ensure consistency
       await fetchRegistrations(false);
     } catch (error: any) {
-      // Restore previous state on error
       setRegistrations(previousRegistrations);
       setError(error.message || 'Error deleting registration');
       console.error('❌ Error deleting registration:', error);
@@ -591,7 +654,7 @@ export default function AdminPortal() {
               </thead>
               <tbody className="bg-gray-800 divide-y divide-gray-700">
                 {paginatedRegistrations.map((reg, index) => (
-                  <tr key={reg.id} className="hover:bg-gradient-to-r hover:from-indigo-900/30 hover:to-purple-900/30 transition-all duration-200" style={{ animationDelay: `${index * 0.05}s` }}>
+                  <tr key={reg.id} className="hover:bg-gradient-to-r hover:from-indigo-900/30 hover:to-purple-900/30 transition-all duration-200">
                     <td className="px-6 py-4 whitespace-nowrap">
                       {reg.photo_url ? (
                         <div className="relative">
@@ -636,10 +699,22 @@ export default function AdminPortal() {
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex gap-2">
                         <button
-                          onClick={() => setSelectedRegistration(reg)}
+                          onClick={() => {
+                            setSelectedRegistration(reg);
+                            setIsEditMode(false);
+                          }}
                           className="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-lg hover:from-blue-600 hover:to-indigo-700 transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105 active:scale-95 text-xs font-semibold"
                         >
                           View
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedRegistration(reg);
+                            handleEditClick(reg);
+                          }}
+                          className="px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-600 text-white rounded-lg hover:from-amber-600 hover:to-orange-700 transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105 active:scale-95 text-xs font-semibold"
+                        >
+                          Edit
                         </button>
                         <button
                           onClick={() => handleDelete(reg.id!, reg.full_name)}
@@ -734,7 +809,7 @@ export default function AdminPortal() {
         </div>
       </div>
 
-      {/* Registration Details Modal */}
+      {/* Registration Details Modal / Edit Modal */}
       {selectedRegistration && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-gray-800/95 backdrop-blur-xl rounded-3xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto border border-gray-700/50">
@@ -742,11 +817,15 @@ export default function AdminPortal() {
               <div className="flex justify-between items-center mb-6">
                 <div>
                   <h2 className="text-3xl font-extrabold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
-                    Registration Details
+                    {isEditMode ? '✏️ Edit Registration' : 'Registration Details'}
                   </h2>
                 </div>
                 <button
-                  onClick={() => setSelectedRegistration(null)}
+                  onClick={() => {
+                    setSelectedRegistration(null);
+                    setIsEditMode(false);
+                    setEditData({});
+                  }}
                   className="p-2 hover:bg-gray-700 rounded-full transition-colors text-gray-400 hover:text-gray-200"
                 >
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -755,12 +834,22 @@ export default function AdminPortal() {
                 </button>
               </div>
 
+              {editMessage && (
+                <div className={`mb-6 p-4 rounded-xl border-l-4 ${
+                  editMessage.type === 'success' 
+                    ? 'bg-green-900/30 text-green-300 border-green-500' 
+                    : 'bg-red-900/30 text-red-300 border-red-500'
+                }`}>
+                  {editMessage.text}
+                </div>
+              )}
+
               <div className="space-y-6">
-                {selectedRegistration.photo_url && (
+                {(isEditMode ? editData.photo_url : selectedRegistration.photo_url) && (
                   <div className="flex justify-center">
                     <Image
-                      src={selectedRegistration.photo_url}
-                      alt={selectedRegistration.full_name}
+                      src={(isEditMode ? editData.photo_url : selectedRegistration.photo_url) || ''}
+                      alt={isEditMode ? (editData.full_name || '') : selectedRegistration.full_name}
                       width={150}
                       height={150}
                       className="rounded-full object-cover border-4 border-indigo-500/50 shadow-xl"
@@ -769,57 +858,184 @@ export default function AdminPortal() {
                 )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Full Name */}
                   <div>
                     <label className="text-sm font-medium text-gray-400">Full Name</label>
-                    <p className="text-gray-200 font-semibold text-lg">{selectedRegistration.full_name}</p>
+                    {isEditMode ? (
+                      <input
+                        type="text"
+                        value={editData.full_name || ''}
+                        onChange={(e) => handleEditChange('full_name', e.target.value)}
+                        className="w-full px-4 py-2 mt-2 bg-gray-700/50 border border-gray-600 rounded-lg text-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30"
+                      />
+                    ) : (
+                      <p className="text-gray-200 font-semibold text-lg">{selectedRegistration.full_name}</p>
+                    )}
                   </div>
+
+                  {/* Kit Number */}
                   <div>
                     <label className="text-sm font-medium text-gray-400">Kit Number</label>
-                    <p className="text-gray-200 font-semibold text-lg">{selectedRegistration.kit_number}</p>
+                    {isEditMode ? (
+                      <input
+                        type="text"
+                        value={editData.kit_number || ''}
+                        onChange={(e) => handleEditChange('kit_number', e.target.value)}
+                        className="w-full px-4 py-2 mt-2 bg-gray-700/50 border border-gray-600 rounded-lg text-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30"
+                      />
+                    ) : (
+                      <p className="text-gray-200 font-semibold text-lg">{selectedRegistration.kit_number}</p>
+                    )}
                   </div>
+
+                  {/* Email */}
                   <div>
                     <label className="text-sm font-medium text-gray-400">Email</label>
-                    <p className="text-gray-300">{selectedRegistration.email}</p>
+                    {isEditMode ? (
+                      <input
+                        type="email"
+                        value={editData.email || ''}
+                        onChange={(e) => handleEditChange('email', e.target.value)}
+                        className="w-full px-4 py-2 mt-2 bg-gray-700/50 border border-gray-600 rounded-lg text-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30"
+                      />
+                    ) : (
+                      <p className="text-gray-300">{selectedRegistration.email}</p>
+                    )}
                   </div>
+
+                  {/* WhatsApp */}
                   <div>
                     <label className="text-sm font-medium text-gray-400">WhatsApp</label>
-                    <p className="text-gray-300">{selectedRegistration.whatsapp_number}</p>
+                    {isEditMode ? (
+                      <input
+                        type="text"
+                        value={editData.whatsapp_number || ''}
+                        onChange={(e) => handleEditChange('whatsapp_number', e.target.value)}
+                        className="w-full px-4 py-2 mt-2 bg-gray-700/50 border border-gray-600 rounded-lg text-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30"
+                      />
+                    ) : (
+                      <p className="text-gray-300">
+                        <a href={`tel:${selectedRegistration.whatsapp_number}`} className="hover:text-indigo-400 transition-colors">
+                          {selectedRegistration.whatsapp_number}
+                        </a>
+                      </p>
+                    )}
                   </div>
+
+                  {/* Car Number Plate */}
                   <div>
                     <label className="text-sm font-medium text-gray-400">Car Number Plate</label>
-                    <p className="text-gray-300">{selectedRegistration.car_number_plate}</p>
+                    {isEditMode ? (
+                      <input
+                        type="text"
+                        value={editData.car_number_plate || ''}
+                        onChange={(e) => handleEditChange('car_number_plate', e.target.value)}
+                        className="w-full px-4 py-2 mt-2 bg-gray-700/50 border border-gray-600 rounded-lg text-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30"
+                      />
+                    ) : (
+                      <p className="text-gray-300">{selectedRegistration.car_number_plate}</p>
+                    )}
                   </div>
+
+                  {/* House */}
                   <div>
                     <label className="text-sm font-medium text-gray-400">House</label>
-                    <p className="text-gray-300">{selectedRegistration.house}</p>
+                    {isEditMode ? (
+                      <input
+                        type="text"
+                        value={editData.house || ''}
+                        onChange={(e) => handleEditChange('house', e.target.value)}
+                        className="w-full px-4 py-2 mt-2 bg-gray-700/50 border border-gray-600 rounded-lg text-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30"
+                      />
+                    ) : (
+                      <p className="text-gray-300">{selectedRegistration.house}</p>
+                    )}
                   </div>
+
+                  {/* Profession */}
                   <div>
                     <label className="text-sm font-medium text-gray-400">Profession</label>
-                    <p className="text-gray-300">{selectedRegistration.profession}</p>
+                    {isEditMode ? (
+                      <input
+                        type="text"
+                        value={editData.profession || ''}
+                        onChange={(e) => handleEditChange('profession', e.target.value)}
+                        className="w-full px-4 py-2 mt-2 bg-gray-700/50 border border-gray-600 rounded-lg text-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30"
+                      />
+                    ) : (
+                      <p className="text-gray-300">{selectedRegistration.profession}</p>
+                    )}
                   </div>
+
+                  {/* Attending Gala */}
                   <div>
                     <label className="text-sm font-medium text-gray-400">Attending Gala</label>
-                    <span className={`inline-block px-4 py-2 rounded-full text-sm font-semibold ${
-                      selectedRegistration.attend_gala === 'Yes'
-                        ? 'bg-green-600/30 text-green-300 border border-green-500/30'
-                        : 'bg-red-600/30 text-red-300 border border-red-500/30'
-                    }`}>
-                      {selectedRegistration.attend_gala}
-                    </span>
+                    {isEditMode ? (
+                      <select
+                        value={editData.attend_gala || 'Yes'}
+                        onChange={(e) => handleEditChange('attend_gala', e.target.value)}
+                        className="w-full px-4 py-2 mt-2 bg-gray-700/50 border border-gray-600 rounded-lg text-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30"
+                      >
+                        <option value="Yes">Yes</option>
+                        <option value="No">No</option>
+                      </select>
+                    ) : (
+                      <span className={`inline-block px-4 py-2 rounded-full text-sm font-semibold ${
+                        selectedRegistration.attend_gala === 'Yes'
+                          ? 'bg-green-600/30 text-green-300 border border-green-500/30'
+                          : 'bg-red-600/30 text-red-300 border border-red-500/30'
+                      }`}>
+                        {selectedRegistration.attend_gala}
+                      </span>
+                    )}
                   </div>
+
+                  {/* Morale */}
                   <div>
                     <label className="text-sm font-medium text-gray-400">Morale</label>
-                    <p className="text-gray-300">{selectedRegistration.morale}</p>
+                    {isEditMode ? (
+                      <input
+                        type="text"
+                        value={editData.morale || ''}
+                        onChange={(e) => handleEditChange('morale', e.target.value)}
+                        className="w-full px-4 py-2 mt-2 bg-gray-700/50 border border-gray-600 rounded-lg text-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30"
+                      />
+                    ) : (
+                      <p className="text-gray-300">{selectedRegistration.morale}</p>
+                    )}
                   </div>
+
+                  {/* Excited for Gala */}
                   <div>
                     <label className="text-sm font-medium text-gray-400">Excited for Gala</label>
-                    <p className="text-gray-300">{selectedRegistration.excited_for_gala}</p>
+                    {isEditMode ? (
+                      <input
+                        type="text"
+                        value={editData.excited_for_gala || ''}
+                        onChange={(e) => handleEditChange('excited_for_gala', e.target.value)}
+                        className="w-full px-4 py-2 mt-2 bg-gray-700/50 border border-gray-600 rounded-lg text-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30"
+                      />
+                    ) : (
+                      <p className="text-gray-300">{selectedRegistration.excited_for_gala}</p>
+                    )}
                   </div>
+
+                  {/* Postal Address */}
                   <div className="md:col-span-2">
                     <label className="text-sm font-medium text-gray-400">Postal Address</label>
-                    <p className="text-gray-300">{selectedRegistration.postal_address}</p>
+                    {isEditMode ? (
+                      <textarea
+                        value={editData.postal_address || ''}
+                        onChange={(e) => handleEditChange('postal_address', e.target.value)}
+                        className="w-full px-4 py-2 mt-2 bg-gray-700/50 border border-gray-600 rounded-lg text-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 resize-none h-24"
+                      />
+                    ) : (
+                      <p className="text-gray-300">{selectedRegistration.postal_address}</p>
+                    )}
                   </div>
-                  {selectedRegistration.created_at && (
+
+                  {/* Registered On */}
+                  {selectedRegistration.created_at && !isEditMode && (
                     <div>
                       <label className="text-sm font-medium text-gray-400">Registered On</label>
                       <p className="text-gray-300">
@@ -830,19 +1046,62 @@ export default function AdminPortal() {
                 </div>
               </div>
 
-              <div className="mt-8 flex justify-end gap-3">
-                <button
-                  onClick={() => handleDelete(selectedRegistration.id!, selectedRegistration.full_name)}
-                  className="bg-gradient-to-r from-red-600 to-rose-600 text-white px-6 py-3 rounded-xl font-semibold hover:from-red-700 hover:to-rose-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95"
-                >
-                  Delete Registration
-                </button>
-                <button
-                  onClick={() => setSelectedRegistration(null)}
-                  className="bg-gray-700 text-white px-6 py-3 rounded-xl font-semibold hover:bg-gray-600 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95"
-                >
-                  Close
-                </button>
+              <div className="mt-8 flex justify-end gap-3 flex-wrap">
+                {isEditMode ? (
+                  <>
+                    <button
+                      onClick={handleCancelEdit}
+                      disabled={editLoading}
+                      className="bg-gray-700 text-white px-6 py-3 rounded-xl font-semibold hover:bg-gray-600 transition-all duration-300 disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleSaveEdit}
+                      disabled={editLoading}
+                      className="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-3 rounded-xl font-semibold hover:from-green-700 hover:to-emerald-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95 disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {editLoading ? (
+                        <>
+                          <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          Saving...
+                        </>
+                      ) : (
+                        'Save Changes'
+                      )}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => handleEditClick(selectedRegistration)}
+                      className="bg-gradient-to-r from-amber-600 to-orange-600 text-white px-6 py-3 rounded-xl font-semibold hover:from-amber-700 hover:to-orange-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95 flex items-center gap-2"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDelete(selectedRegistration.id!, selectedRegistration.full_name)}
+                      className="bg-gradient-to-r from-red-600 to-rose-600 text-white px-6 py-3 rounded-xl font-semibold hover:from-red-700 hover:to-rose-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95"
+                    >
+                      Delete Registration
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSelectedRegistration(null);
+                        setIsEditMode(false);
+                      }}
+                      className="bg-gray-700 text-white px-6 py-3 rounded-xl font-semibold hover:bg-gray-600 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95"
+                    >
+                      Close
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           </div>
