@@ -17,6 +17,7 @@ export default function AdminPortal() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordMessage, setPasswordMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
   const router = useRouter();
 
   useEffect(() => {
@@ -227,6 +228,23 @@ export default function AdminPortal() {
     reg.whatsapp_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
     reg.car_number_plate.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  // Pagination settings
+  const itemsPerPage = 20;
+  const totalPages = Math.ceil(filteredRegistrations.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedRegistrations = filteredRegistrations.slice(startIndex, endIndex);
+
+  // Reset to page 1 when search term changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm]);
+
+  // Reset to page 1 when registrations change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [registrations.length]);
 
   const totalCount = registrations.length;
   const attendingCount = registrations.filter(r => r.attend_gala === 'Yes').length;
@@ -472,7 +490,7 @@ export default function AdminPortal() {
                 </tr>
               </thead>
               <tbody className="bg-gray-800 divide-y divide-gray-700">
-                {filteredRegistrations.map((reg, index) => (
+                {paginatedRegistrations.map((reg, index) => (
                   <tr key={reg.id} className="hover:bg-gradient-to-r hover:from-indigo-900/30 hover:to-purple-900/30 transition-all duration-200 animate-slide-in" style={{ animationDelay: `${index * 0.05}s` }}>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {reg.photo_url ? (
@@ -535,6 +553,73 @@ export default function AdminPortal() {
               <p className="text-gray-400 text-lg font-medium">
                 {searchTerm ? 'No registrations found matching your search.' : 'No registrations yet.'}
               </p>
+            </div>
+          )}
+
+          {/* Pagination Controls */}
+          {filteredRegistrations.length > 0 && (
+            <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 bg-gray-800/50 border-t border-gray-700/50">
+              <div className="text-sm text-gray-400">
+                Showing <span className="font-semibold text-white">{startIndex + 1}</span> to{' '}
+                <span className="font-semibold text-white">{Math.min(endIndex, filteredRegistrations.length)}</span> of{' '}
+                <span className="font-semibold text-white">{filteredRegistrations.length}</span> entries
+                {searchTerm && (
+                  <span className="ml-2 text-indigo-400">(filtered from {registrations.length} total)</span>
+                )}
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-md flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                  Previous
+                </button>
+                
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    let pageNum;
+                    if (totalPages <= 5) {
+                      pageNum = i + 1;
+                    } else if (currentPage <= 3) {
+                      pageNum = i + 1;
+                    } else if (currentPage >= totalPages - 2) {
+                      pageNum = totalPages - 4 + i;
+                    } else {
+                      pageNum = currentPage - 2 + i;
+                    }
+                    
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => setCurrentPage(pageNum)}
+                        className={`px-3 py-2 rounded-lg transition-all duration-200 font-semibold ${
+                          currentPage === pageNum
+                            ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg scale-110'
+                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600 hover:text-white'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                </div>
+                
+                <button
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-md flex items-center gap-2"
+                >
+                  Next
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              </div>
             </div>
           )}
         </div>
