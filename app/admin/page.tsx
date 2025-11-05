@@ -153,6 +153,74 @@ export default function AdminPortal() {
     }
   };
 
+  const handleDownloadCSV = () => {
+    if (registrations.length === 0) {
+      alert('No registrations to download.');
+      return;
+    }
+
+    // Define CSV headers
+    const headers = [
+      'Full Name',
+      'Kit Number',
+      'Email',
+      'WhatsApp Number',
+      'Car Number Plate',
+      'House',
+      'Profession',
+      'Postal Address',
+      'Attending Gala',
+      'Morale',
+      'Excited for Gala',
+      'Photo URL',
+      'Registered On'
+    ];
+
+    // Convert registrations to CSV rows
+    const csvRows = registrations.map(reg => {
+      const row = [
+        `"${(reg.full_name || '').replace(/"/g, '""')}"`,
+        `"${(reg.kit_number || '').replace(/"/g, '""')}"`,
+        `"${(reg.email || '').replace(/"/g, '""')}"`,
+        `"${(reg.whatsapp_number || '').replace(/"/g, '""')}"`,
+        `"${(reg.car_number_plate || '').replace(/"/g, '""')}"`,
+        `"${(reg.house || '').replace(/"/g, '""')}"`,
+        `"${(reg.profession || '').replace(/"/g, '""')}"`,
+        `"${(reg.postal_address || '').replace(/"/g, '""')}"`,
+        `"${(reg.attend_gala || '').replace(/"/g, '""')}"`,
+        `"${(reg.morale || '').replace(/"/g, '""')}"`,
+        `"${(reg.excited_for_gala || '').replace(/"/g, '""')}"`,
+        `"${(reg.photo_url || '').replace(/"/g, '""')}"`,
+        `"${reg.created_at ? new Date(reg.created_at).toLocaleString() : ''}"`
+      ];
+      return row.join(',');
+    });
+
+    // Combine headers and rows
+    const csvContent = [
+      headers.join(','),
+      ...csvRows
+    ].join('\n');
+
+    // Add BOM for UTF-8 (helps Excel open it correctly)
+    const BOM = '\uFEFF';
+    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+    
+    // Create download link
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    
+    // Generate filename with current date
+    const date = new Date().toISOString().split('T')[0];
+    link.setAttribute('download', `kohatians-registrations-${date}.csv`);
+    
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const filteredRegistrations = registrations.filter(reg =>
     reg.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     reg.kit_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -342,23 +410,40 @@ export default function AdminPortal() {
             </div>
           </div>
 
-          <button
-            onClick={fetchRegistrations}
-            disabled={loading}
-            className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl font-semibold shadow-lg hover:shadow-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105 active:scale-95"
-          >
-            {loading ? (
-              <span className="flex items-center gap-2">
-                <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                Loading...
-              </span>
-            ) : (
-              'Refresh'
-            )}
-          </button>
+          <div className="flex gap-3 flex-wrap">
+            <button
+              onClick={fetchRegistrations}
+              disabled={loading}
+              className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl font-semibold shadow-lg hover:shadow-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105 active:scale-95 flex items-center gap-2"
+            >
+              {loading ? (
+                <>
+                  <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Loading...
+                </>
+              ) : (
+                <>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Refresh
+                </>
+              )}
+            </button>
+            <button
+              onClick={handleDownloadCSV}
+              disabled={registrations.length === 0}
+              className="bg-gradient-to-r from-blue-500 to-cyan-600 text-white px-6 py-3 rounded-xl font-semibold shadow-lg hover:shadow-xl hover:from-blue-600 hover:to-cyan-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105 active:scale-95 flex items-center gap-2"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Download CSV
+            </button>
+          </div>
         </div>
 
         <div className="bg-gray-800/90 backdrop-blur-xl rounded-3xl shadow-2xl overflow-hidden border border-gray-700/50">

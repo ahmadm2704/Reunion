@@ -69,7 +69,7 @@ export default function Home() {
             <p className="text-white/90 text-base sm:text-lg md:text-xl leading-relaxed">
               Dear Kohatians, we invite you to register for the upcoming <span className="font-bold text-yellow-300">Gathering (GTG)</span> scheduled for the evening of{' '}
               <span className="font-bold text-yellow-300 text-lg">November 22, 2025</span>, at{' '}
-              <span className="font-bold text-yellow-300 text-lg">Sareena, Islamabad</span>. If you plan to attend, kindly register to help us make the necessary arrangements. We look forward to seeing you for an evening of socializing, dinner, music, and merriment.
+              <span className="font-bold text-yellow-300 text-lg">SERENA, Islamabad</span>. If you plan to attend, kindly register to help us make the necessary arrangements. We look forward to seeing you for an evening of socializing, dinner, music, and merriment.
             </p>
           </div>
 
