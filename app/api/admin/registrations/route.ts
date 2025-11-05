@@ -25,26 +25,53 @@ export async function GET(request: NextRequest) {
       supabaseServiceKey || supabaseAnonKey
     );
 
-    const { data, error } = await supabaseClient
-      .from('registrations')
-      .select('*')
-      .order('created_at', { ascending: false });
+    // Fetch all registrations without pagination limit
+    // Supabase default limit is 1000, so we'll fetch in batches if needed
+    let allData: any[] = [];
+    let from = 0;
+    const pageSize = 1000;
+    let hasMore = true;
 
-    if (error) {
-      console.error('Supabase error:', error);
-      return NextResponse.json(
-        { error: error.message || 'Failed to fetch registrations' },
-        { 
-          status: 500,
-          headers: {
-            'Cache-Control': 'no-store, no-cache, must-revalidate',
+    while (hasMore) {
+      const { data, error, count } = await supabaseClient
+        .from('registrations')
+        .select('*', { count: 'exact' })
+        .order('created_at', { ascending: false })
+        .range(from, from + pageSize - 1);
+
+      if (error) {
+        console.error('Supabase error fetching registrations:', error);
+        return NextResponse.json(
+          { error: error.message || 'Failed to fetch registrations' },
+          { 
+            status: 500,
+            headers: {
+              'Cache-Control': 'no-store, no-cache, must-revalidate',
+            }
           }
-        }
-      );
+        );
+      }
+
+      if (data) {
+        allData = [...allData, ...data];
+        console.log(`Fetched ${data.length} registrations (total: ${allData.length})`);
+      }
+
+      // Check if we've fetched all records
+      // Stop if we got fewer records than pageSize, or if we've fetched all records according to count
+      if (!data || data.length === 0 || data.length < pageSize) {
+        hasMore = false;
+      } else if (count !== null && allData.length >= count) {
+        hasMore = false;
+      } else {
+        from += pageSize;
+      }
     }
 
+    console.log(`Total registrations fetched: ${allData.length}`);
+
     return NextResponse.json(
-      { data: data || [] },
+      { data: allData || [] },
       {
         headers: {
           'Cache-Control': 'no-store, no-cache, must-revalidate',
