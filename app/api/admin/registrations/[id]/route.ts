@@ -41,6 +41,18 @@ export async function PATCH(
     // Remove id and created_at from update data (these shouldn't be updated)
     const { id: _, created_at: __, ...dataToUpdate } = updateData;
 
+    // Validate kit_number is numeric only if it's being updated
+    if (dataToUpdate.kit_number !== undefined) {
+      const kitNumber = String(dataToUpdate.kit_number).trim();
+      if (!kitNumber || !/^\d+$/.test(kitNumber)) {
+        return NextResponse.json(
+          { error: 'Kit number must contain only numbers (0-9)' },
+          { status: 400 }
+        );
+      }
+      dataToUpdate.kit_number = kitNumber;
+    }
+
     // Use service role key if available, otherwise use anon key
     const supabaseClient = createClient(
       supabaseUrl,

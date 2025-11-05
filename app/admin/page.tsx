@@ -166,6 +166,16 @@ export default function AdminPortal() {
   };
 
   const handleEditChange = (field: string, value: any) => {
+    // For kit_number, only allow numeric input
+    if (field === 'kit_number') {
+      const numericValue = String(value).replace(/\D/g, '');
+      setEditData(prev => ({
+        ...prev,
+        [field]: numericValue
+      }));
+      return;
+    }
+    
     setEditData(prev => ({
       ...prev,
       [field]: value
@@ -179,6 +189,19 @@ export default function AdminPortal() {
     setEditMessage(null);
 
     try {
+      // Validate kit number is numeric only if it's being updated
+      if (editData.kit_number !== undefined) {
+        const kitNumber = String(editData.kit_number).trim();
+        if (!kitNumber || !/^\d+$/.test(kitNumber)) {
+          setEditMessage({ 
+            type: 'error', 
+            text: 'Kit number must contain only numbers (0-9)' 
+          });
+          setEditLoading(false);
+          return;
+        }
+      }
+
       const response = await fetch(`/api/admin/registrations/${selectedRegistration.id}`, {
         method: 'PATCH',
         headers: {
@@ -877,12 +900,24 @@ export default function AdminPortal() {
                   <div>
                     <label className="text-sm font-medium text-gray-400">Kit Number</label>
                     {isEditMode ? (
-                      <input
-                        type="text"
-                        value={editData.kit_number || ''}
-                        onChange={(e) => handleEditChange('kit_number', e.target.value)}
-                        className="w-full px-4 py-2 mt-2 bg-gray-700/50 border border-gray-600 rounded-lg text-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30"
-                      />
+                      <>
+                        <input
+                          type="text"
+                          value={editData.kit_number || ''}
+                          onChange={(e) => handleEditChange('kit_number', e.target.value)}
+                          onKeyDown={(e) => {
+                            // Allow: backspace, delete, tab, escape, enter, and numbers
+                            if (!/[0-9]/.test(e.key) && !['Backspace', 'Delete', 'Tab', 'Escape', 'Enter', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key) && !(e.key === 'a' && e.ctrlKey) && !(e.key === 'c' && e.ctrlKey) && !(e.key === 'v' && e.ctrlKey) && !(e.key === 'x' && e.ctrlKey)) {
+                              e.preventDefault();
+                            }
+                          }}
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          className="w-full px-4 py-2 mt-2 bg-gray-700/50 border border-gray-600 rounded-lg text-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30"
+                          placeholder="Numbers only"
+                        />
+                        <p className="text-xs text-gray-400 mt-1">Only numbers (0-9) are allowed</p>
+                      </>
                     ) : (
                       <p className="text-gray-200 font-semibold text-lg">{selectedRegistration.kit_number}</p>
                     )}

@@ -26,6 +26,15 @@ export default function RegistrationForm() {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
+    
+    // For kit_number, only allow numeric input
+    if (name === 'kit_number') {
+      // Remove any non-numeric characters
+      const numericValue = value.replace(/\D/g, '');
+      setFormData(prev => ({ ...prev, [name]: numericValue }));
+      return;
+    }
+    
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
@@ -47,11 +56,22 @@ export default function RegistrationForm() {
     setMessage(null);
 
     try {
+      // Validate kit number is numeric only
+      const kitNumber = formData.kit_number.trim();
+      if (!kitNumber || !/^\d+$/.test(kitNumber)) {
+        setMessage({ 
+          type: 'error', 
+          text: 'Kit number must contain only numbers (0-9)' 
+        });
+        setIsSubmitting(false);
+        return;
+      }
+
       // Check if kit number already exists - CRITICAL: Only one kit number can register once
       const { data: existing, error: checkError } = await supabase
         .from('registrations')
         .select('kit_number')
-        .eq('kit_number', formData.kit_number.trim())
+        .eq('kit_number', kitNumber)
         .maybeSingle();
 
       if (checkError && checkError.code !== 'PGRST116') {
@@ -112,7 +132,7 @@ export default function RegistrationForm() {
         .from('registrations')
         .insert([{
           full_name: formData.full_name.trim(),
-          kit_number: formData.kit_number.trim(),
+          kit_number: kitNumber,
           email: formData.email.trim(),
           whatsapp_number: formData.whatsapp_number.trim(),
           car_number_plate: formData.car_number_plate.trim() || 'N/A',
@@ -225,8 +245,16 @@ export default function RegistrationForm() {
             required
             value={formData.kit_number}
             onChange={handleInputChange}
+            onKeyDown={(e) => {
+              // Allow: backspace, delete, tab, escape, enter, and numbers
+              if (!/[0-9]/.test(e.key) && !['Backspace', 'Delete', 'Tab', 'Escape', 'Enter', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key) && !(e.key === 'a' && e.ctrlKey) && !(e.key === 'c' && e.ctrlKey) && !(e.key === 'v' && e.ctrlKey) && !(e.key === 'x' && e.ctrlKey)) {
+                e.preventDefault();
+              }
+            }}
+            inputMode="numeric"
+            pattern="[0-9]*"
             className="w-full px-4 py-3 border-2 border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-gray-700/50 text-white placeholder-gray-400 backdrop-blur-sm hover:border-gray-500"
-            placeholder="Enter your kit number"
+            placeholder="Enter kit number "
           />
         </div>
 

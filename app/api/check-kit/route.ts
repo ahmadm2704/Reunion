@@ -12,10 +12,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validate kit number is numeric only
+    const kitNumberStr = String(kit_number).trim();
+    if (!/^\d+$/.test(kitNumberStr)) {
+      return NextResponse.json(
+        { error: 'Kit number must contain only numbers (0-9)', available: false },
+        { status: 400 }
+      );
+    }
+
     const { data, error } = await supabase
       .from('registrations')
       .select('kit_number')
-      .eq('kit_number', kit_number)
+      .eq('kit_number', kitNumberStr)
       .single();
 
     if (error && error.code !== 'PGRST116') {
