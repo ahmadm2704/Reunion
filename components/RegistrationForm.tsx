@@ -384,14 +384,13 @@ export default function RegistrationForm() {
 
         <div className="md:col-span-2 group">
           <label htmlFor="photo" className="block text-sm font-semibold text-gray-300 mb-2 group-focus-within:text-indigo-400 transition-colors">
-            Attach Your Photo <span className="text-red-400">*</span>
+            Attach Your Photo <span className="text-gray-500 text-xs">(Optional)</span>
           </label>
           <div className="relative">
             <input
               type="file"
               id="photo"
               name="photo"
-              required
               accept="image/*"
               onChange={handlePhotoChange}
               className="w-full px-4 py-3 border-2 border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-gray-700/50 backdrop-blur-sm hover:border-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-500"
