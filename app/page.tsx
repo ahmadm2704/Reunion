@@ -2,6 +2,7 @@
 
 import Image from 'next/image';
 import RegistrationForm from '@/components/RegistrationForm';
+import EntryWiseGraph from '@/components/EntryWiseGraph';
 
 export default function Home() {
   return (
@@ -19,7 +20,7 @@ export default function Home() {
           />
         </div>
 
-        {/* Gradient Overlay for Text Readability */}
+        {/* Gradient Overlay */}
         <div className="absolute inset-0 bg-gradient-to-br from-gray-900/80 via-indigo-900/75 to-purple-900/80 -z-10"></div>
         
         {/* Pattern Overlay */}
@@ -27,7 +28,7 @@ export default function Home() {
         
         {/* Content Container */}
         <div className="relative z-10 py-20 flex flex-col items-center justify-center text-center max-w-4xl mx-auto">
-          {/* Logo Section - Properly Visible */}
+          {/* Logo Section */}
           <div className="mb-8 animate-float">
             <div className="relative mx-auto w-fit">
               <div className="absolute inset-0 bg-yellow-400/30 rounded-full blur-3xl opacity-60 animate-pulse"></div>
@@ -64,7 +65,7 @@ export default function Home() {
             Once a Kohatian, Always a Kohatian
           </p>
           
-          {/* Main Info Box - Increased Padding */}
+          {/* Main Info Box */}
           <div className="glass-dark rounded-3xl p-8 md:p-10 max-w-3xl border border-white/10 shadow-2xl mb-10 backdrop-blur-md bg-white/5">
             <p className="text-white/90 text-base sm:text-lg md:text-xl leading-relaxed">
               Dear Kohatians, we invite you to register for the upcoming <span className="font-bold text-yellow-300">Gathering (GTG)</span> scheduled for the evening of{' '}
@@ -73,11 +74,10 @@ export default function Home() {
             </p>
           </div>
 
-          {/* Important Notice - Fully Visible */}
+          {/* Important Notice */}
           <div className="max-w-3xl mx-4 w-full mb-8">
             <div className="bg-gradient-to-r from-yellow-500/30 via-orange-500/30 to-red-500/30 backdrop-blur-md rounded-3xl p-8 md:p-10 border-4 border-yellow-400/70 shadow-2xl ring-2 ring-yellow-400/30">
               <div className="flex flex-col items-center text-center gap-6">
-                {/* Warning Icon and Text */}
                 <div className="flex items-center justify-center gap-4 w-full">
                   <svg className="w-8 h-8 md:w-10 md:h-10 text-yellow-300 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
@@ -134,11 +134,29 @@ export default function Home() {
           {/* Call to Action Button */}
           <div className="mb-8">
             <a 
-              href="#registration"
+              href="#analytics"
               className="inline-block px-8 py-4 bg-gradient-to-r from-yellow-400 to-yellow-300 text-gray-900 font-bold text-lg rounded-xl hover:from-yellow-300 hover:to-yellow-200 transition-all duration-300 shadow-xl hover:shadow-2xl transform hover:-translate-y-1"
             >
-              ↓ Register Now ↓
+              ↓ View Analytics ↓
             </a>
+          </div>
+        </div>
+      </section>
+
+      {/* Analytics Section */}
+      <section id="analytics" className="py-20 px-4 relative">
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent to-gray-900/50 -z-10"></div>
+        <div className="max-w-7xl mx-auto relative z-10">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl md:text-5xl font-extrabold mb-4 bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+              Live Registration Analytics
+            </h2>
+            <div className="h-1.5 w-32 bg-gradient-to-r from-indigo-400 to-pink-400 mx-auto rounded-full"></div>
+            <p className="text-gray-400 mt-4">Track registrations by entry in real-time</p>
+          </div>
+          
+          <div className="bg-gray-800/90 backdrop-blur-xl rounded-3xl shadow-2xl p-8 md:p-12 border border-gray-700/50">
+            <EntryWiseGraph />
           </div>
         </div>
       </section>
@@ -166,7 +184,6 @@ export default function Home() {
         <div className="relative z-10">
           <p className="text-xl font-semibold mb-2">© 2025 Kohatians Reunion. All rights reserved.</p>
           <p className="text-base text-gray-400 mb-6 italic">Once a Kohatian, Always a Kohatian</p>
-          
         </div>
       </footer>
     </div>
