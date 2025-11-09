@@ -1,10 +1,13 @@
 'use client';
 
+import { useState } from 'react';
 import Image from 'next/image';
 import RegistrationForm from '@/components/RegistrationForm';
 import EntryWiseGraph from '@/components/EntryWiseGraph';
 
 export default function Home() {
+  const [activeTab, setActiveTab] = useState<'form' | 'analytics'>('form');
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-indigo-900">
       {/* Hero Section */}
@@ -134,46 +137,82 @@ export default function Home() {
           {/* Call to Action Button */}
           <div className="mb-8">
             <a 
-              href="#analytics"
+              href="#content"
               className="inline-block px-8 py-4 bg-gradient-to-r from-yellow-400 to-yellow-300 text-gray-900 font-bold text-lg rounded-xl hover:from-yellow-300 hover:to-yellow-200 transition-all duration-300 shadow-xl hover:shadow-2xl transform hover:-translate-y-1"
             >
-              ↓ View Analytics ↓
+              ↓ Start Here ↓
             </a>
           </div>
         </div>
       </section>
 
-      {/* Analytics Section */}
-      <section id="analytics" className="py-20 px-4 relative">
+      {/* Navigation Tabs Section */}
+      <section id="content" className="py-12 px-4 relative">
         <div className="absolute inset-0 bg-gradient-to-b from-transparent to-gray-900/50 -z-10"></div>
         <div className="max-w-7xl mx-auto relative z-10">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl md:text-5xl font-extrabold mb-4 bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
-              Live Registration Analytics
-            </h2>
-            <div className="h-1.5 w-32 bg-gradient-to-r from-indigo-400 to-pink-400 mx-auto rounded-full"></div>
-            <p className="text-gray-400 mt-4">Track registrations by entry in real-time</p>
+          {/* Tab Buttons */}
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-8 justify-center">
+            <button
+              onClick={() => setActiveTab('form')}
+              className={`px-6 sm:px-8 py-3 sm:py-4 rounded-xl font-bold text-base sm:text-lg transition-all duration-300 shadow-lg transform hover:scale-105 ${
+                activeTab === 'form'
+                  ? 'bg-gradient-to-r from-indigo-500 to-purple-500 text-white shadow-indigo-500/50'
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              }`}
+            >
+              <span className="flex items-center gap-2 justify-center">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                Registration Form
+              </span>
+            </button>
+            <button
+              onClick={() => setActiveTab('analytics')}
+              className={`px-6 sm:px-8 py-3 sm:py-4 rounded-xl font-bold text-base sm:text-lg transition-all duration-300 shadow-lg transform hover:scale-105 ${
+                activeTab === 'analytics'
+                  ? 'bg-gradient-to-r from-indigo-500 to-purple-500 text-white shadow-indigo-500/50'
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              }`}
+            >
+              <span className="flex items-center gap-2 justify-center">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                Analytics
+              </span>
+            </button>
           </div>
-          
-          <div className="bg-gray-800/90 backdrop-blur-xl rounded-3xl shadow-2xl p-8 md:p-12 border border-gray-700/50">
-            <EntryWiseGraph />
-          </div>
-        </div>
-      </section>
 
-      {/* Registration Form Section */}
-      <section id="registration" className="py-20 px-4 relative">
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent to-gray-900/50 -z-10"></div>
-        <div className="max-w-5xl mx-auto relative z-10">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl md:text-5xl font-extrabold mb-4 bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
-              Registration Form
-            </h2>
-            <div className="h-1.5 w-32 bg-gradient-to-r from-indigo-400 to-pink-400 mx-auto rounded-full"></div>
-          </div>
-          
-          <div className="bg-gray-800/90 backdrop-blur-xl rounded-3xl shadow-2xl p-8 md:p-12 border border-gray-700/50 hover:shadow-purple-500/20 transition-all duration-300">
-            <RegistrationForm />
+          {/* Content Area */}
+          <div className="bg-gray-800/90 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-2xl p-6 sm:p-12 border border-gray-700/50 hover:shadow-purple-500/20 transition-all duration-300">
+            {/* Registration Form Tab */}
+            {activeTab === 'form' && (
+              <div className="animate-fadeIn">
+                <div className="text-center mb-8">
+                  <h2 className="text-3xl md:text-4xl font-extrabold mb-4 bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+                    Registration Form
+                  </h2>
+                  <div className="h-1.5 w-32 bg-gradient-to-r from-indigo-400 to-pink-400 mx-auto rounded-full"></div>
+                  <p className="text-gray-400 mt-4 text-sm sm:text-base">Fill in your details below to register for the event</p>
+                </div>
+                <RegistrationForm />
+              </div>
+            )}
+
+            {/* Analytics Tab */}
+            {activeTab === 'analytics' && (
+              <div className="animate-fadeIn">
+                <div className="text-center mb-8">
+                  <h2 className="text-3xl md:text-4xl font-extrabold mb-4 bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+                    Live Registration Analytics
+                  </h2>
+                  <div className="h-1.5 w-32 bg-gradient-to-r from-indigo-400 to-pink-400 mx-auto rounded-full"></div>
+                  <p className="text-gray-400 mt-4 text-sm sm:text-base">Track registrations by entry in real-time</p>
+                </div>
+                <EntryWiseGraph />
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -186,6 +225,23 @@ export default function Home() {
           <p className="text-base text-gray-400 mb-6 italic">Once a Kohatian, Always a Kohatian</p>
         </div>
       </footer>
+
+      {/* Fade in animation */}
+      <style>{`
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+            transform: translateY(10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        .animate-fadeIn {
+          animation: fadeIn 0.3s ease-in-out;
+        }
+      `}</style>
     </div>
   );
 }
