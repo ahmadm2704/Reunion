@@ -77,10 +77,10 @@ export default function Home() {
             </p>
           </div>
 
-          {/* Important Notice */}
+          {/* Important Notice - REGISTRATION IS MANDATORY */}
           <div className="max-w-3xl mx-4 w-full mb-8">
             <div className="bg-gradient-to-r from-yellow-500/30 via-orange-500/30 to-red-500/30 backdrop-blur-md rounded-3xl p-8 md:p-10 border-4 border-yellow-400/70 shadow-2xl ring-2 ring-yellow-400/30">
-              <div className="flex flex-col items-center text-center gap-6">
+              <div className="flex flex-col items-center text-center gap-3">
                 <div className="flex items-center justify-center gap-4 w-full">
                   <svg className="w-8 h-8 md:w-10 md:h-10 text-yellow-300 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
@@ -93,43 +93,6 @@ export default function Home() {
                 <p className="text-white/95 font-semibold text-base md:text-lg">
                   Open for all Kohatians
                 </p>
-                
-                {/* Contact Section */}
-                <div className="w-full border-t border-white/20 pt-6">
-                  <p className="text-white font-bold text-base md:text-lg mb-4">
-                    Need help with registration? Contact us:
-                  </p>
-                  
-                  <div className="flex flex-col sm:flex-row flex-wrap gap-3 justify-center items-center w-full">
-                    <a 
-                      href="tel:+923489884757" 
-                      className="inline-flex items-center gap-2 px-5 py-3 bg-white/15 hover:bg-white/25 rounded-xl text-white font-bold text-sm md:text-base transition-all duration-200 hover:scale-105 shadow-lg border border-white/20 hover:border-white/40"
-                    >
-                      <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                      </svg>
-                      <span>+92 348 9884757</span>
-                    </a>
-                    <a 
-                      href="tel:+923085551409" 
-                      className="inline-flex items-center gap-2 px-5 py-3 bg-white/15 hover:bg-white/25 rounded-xl text-white font-bold text-sm md:text-base transition-all duration-200 hover:scale-105 shadow-lg border border-white/20 hover:border-white/40"
-                    >
-                      <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                      </svg>
-                      <span>+92 308 5551409</span>
-                    </a>
-                    <a 
-                      href="tel:+923332480909" 
-                      className="inline-flex items-center gap-2 px-5 py-3 bg-white/15 hover:bg-white/25 rounded-xl text-white font-bold text-sm md:text-base transition-all duration-200 hover:scale-105 shadow-lg border border-white/20 hover:border-white/40"
-                    >
-                      <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                      </svg>
-                      <span>+92 333 2480909</span>
-                    </a>
-                  </div>
-                </div>
               </div>
             </div>
           </div>
@@ -213,6 +176,54 @@ export default function Home() {
                 <EntryWiseGraph />
               </div>
             )}
+          </div>
+        </div>
+      </section>
+
+      {/* Contact Details Section - MOVED DOWN */}
+      <section className="py-12 px-4 relative">
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent to-gray-900/50 -z-10"></div>
+        <div className="max-w-4xl mx-auto relative z-10">
+          <div className="bg-gradient-to-r from-indigo-500/20 via-purple-500/20 to-pink-500/20 backdrop-blur-md rounded-2xl sm:rounded-3xl p-8 md:p-10 border-2 border-indigo-400/50 shadow-2xl">
+            <div className="text-center">
+              <h2 className="text-2xl md:text-3xl font-bold text-white mb-2">
+                Need Help with Registration?
+              </h2>
+              <p className="text-gray-300 mb-6 text-sm sm:text-base">
+                Have questions or need assistance? Contact us anytime!
+              </p>
+
+              {/* Contact Buttons */}
+              <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4 justify-center items-center">
+                <a 
+                  href="tel:+923489884757" 
+                  className="inline-flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 rounded-xl text-white font-bold text-sm md:text-base transition-all duration-200 hover:scale-105 shadow-lg border border-indigo-400/50 hover:border-indigo-300"
+                >
+                  <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                  </svg>
+                  <span>+92 348 9884757</span>
+                </a>
+                <a 
+                  href="tel:+923085551409" 
+                  className="inline-flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 rounded-xl text-white font-bold text-sm md:text-base transition-all duration-200 hover:scale-105 shadow-lg border border-purple-400/50 hover:border-purple-300"
+                >
+                  <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                  </svg>
+                  <span>+92 308 5551409</span>
+                </a>
+                <a 
+                  href="tel:+923332480909" 
+                  className="inline-flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-pink-600 to-pink-700 hover:from-pink-500 hover:to-pink-600 rounded-xl text-white font-bold text-sm md:text-base transition-all duration-200 hover:scale-105 shadow-lg border border-pink-400/50 hover:border-pink-300"
+                >
+                  <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                  </svg>
+                  <span>+92 333 2480909</span>
+                </a>
+              </div>
+            </div>
           </div>
         </div>
       </section>
