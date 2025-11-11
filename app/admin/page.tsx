@@ -391,12 +391,16 @@ export default function AdminPortal() {
     document.body.removeChild(link);
   };
 
-  const filteredRegistrations = registrations.filter(reg =>
-    reg.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    reg.kit_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    reg.whatsapp_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    reg.car_number_plate.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredRegistrations = registrations.filter(reg => {
+    if (!searchTerm.trim()) return true;
+    
+    const searchLower = searchTerm.toLowerCase().trim();
+    const fullName = (reg.full_name || '').toLowerCase();
+    const kitNumber = (reg.kit_number || '').toLowerCase();
+    
+    // Kit number must start with search term, name can contain it
+    return fullName.includes(searchLower) || kitNumber.startsWith(searchLower);
+  });
 
   const itemsPerPage = 20;
   const totalPages = Math.ceil(filteredRegistrations.length / itemsPerPage);
@@ -590,7 +594,7 @@ export default function AdminPortal() {
               </div>
               <input
                 type="text"
-                placeholder="Search by name, kit number, whatsapp, or car plate..."
+                placeholder="Search by name or kit number..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-12 pr-4 py-3 border-2 border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-200 bg-gray-700/50 text-white placeholder-gray-400 backdrop-blur-sm"
