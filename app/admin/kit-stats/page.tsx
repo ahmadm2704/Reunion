@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Registration } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 
@@ -79,25 +79,143 @@ export default function KitStatsPage() {
     }
   };
 
-  // Calculate statistics by digit count
+  // Extract entry number from kit number based on specific rules
+  const getEntryNumber = (kitNumber: string): number | null => {
+    if (!kitNumber) return null;
+    
+    const trimmed = kitNumber.trim();
+    if (trimmed.length === 0) return null;
+    
+    const digitCount = trimmed.length;
+    const kitNum = parseInt(trimmed);
+    
+    // Skip if not a valid number
+    if (isNaN(kitNum)) return null;
+    
+    // Entry 1: 1-digit numbers (1-9) and 2-digit numbers (10-80)
+    if (digitCount === 1) {
+      if (kitNum >= 1 && kitNum <= 9) return 1;
+    }
+    if (digitCount === 2) {
+      if (kitNum >= 10 && kitNum <= 80) return 1;
+      return null; // Other 2-digit numbers don't match any entry
+    }
+    
+    // For 3-digit numbers
+    if (digitCount === 3) {
+      const firstTwoDigits = parseInt(trimmed.substring(0, 2));
+      const firstDigit = parseInt(trimmed[0]);
+      
+      // Check 86 and 87 first (before single digit checks) - these go to entries 22 and 23
+      if (firstTwoDigits === 86) return 22;
+      if (firstTwoDigits === 87) return 23;
+      
+      // Then check single digit patterns for 3-digit numbers
+      // Entry 2: 3-digit numbers starting with 1 → displayed as "2" on x-axis
+      if (firstDigit === 1) return 2;
+      // Entry 3: 3-digit numbers starting with 2 → displayed as "3" on x-axis
+      if (firstDigit === 2) return 3;
+      // Entry 4: 3-digit numbers starting with 3 → displayed as "4" on x-axis
+      if (firstDigit === 3) return 4;
+      // Entry 5: 3-digit numbers starting with 4 → displayed as "5" on x-axis
+      if (firstDigit === 4) return 5;
+      // Entry 6: 3-digit numbers starting with 5 OR 6 → displayed as "6" on x-axis
+      // Examples: 500, 501, 600, 601 all go to Entry 6
+      if (firstDigit === 5) return 6;
+      if (firstDigit === 6) return 6;
+      // Entry 7: 3-digit numbers starting with 7
+      if (firstDigit === 7) return 7;
+      // Entry 8: 3-digit numbers starting with 8 (86 and 87 already handled above)
+      if (firstDigit === 8) return 8;
+      // Entry 9: 3-digit numbers starting with 9
+      if (firstDigit === 9) return 9;
+    }
+    
+    // For 4-digit and 5-digit numbers starting from 10 to 56
+    // The first 2 digits represent the entry number
+    if (digitCount === 4 || digitCount === 5) {
+      const firstTwoDigits = parseInt(trimmed.substring(0, 2));
+      if (!isNaN(firstTwoDigits) && firstTwoDigits >= 10 && firstTwoDigits <= 56) {
+        return firstTwoDigits;
+      }
+    }
+    
+    // For other cases, return null to keep them grouped separately
+    return null;
+  };
+
+  // Calculate statistics by entry number
   const calculateStats = () => {
     const stats: { [key: number]: number } = {};
+    const otherStats: { [key: string]: number } = {}; // For entries that don't match rules
+    
+    registrations.forEach(reg => {
+      if (reg.kit_number) {
+        const entryNumber = getEntryNumber(reg.kit_number);
+        
+        if (entryNumber !== null) {
+          stats[entryNumber] = (stats[entryNumber] || 0) + 1;
+        } else {
+          // Keep other entries grouped by digit count
+          const digitCount = reg.kit_number.trim().length;
+          const key = `other_${digitCount}`;
+          otherStats[key] = (otherStats[key] || 0) + 1;
+        }
+      }
+    });
+    
+    return { entryStats: stats, otherStats };
+  };
+
+  // Calculate statistics by digit count
+  const calculateDigitStats = () => {
+    const digitStats: { [key: number]: number } = {};
     
     registrations.forEach(reg => {
       if (reg.kit_number) {
         const digitCount = reg.kit_number.trim().length;
-        stats[digitCount] = (stats[digitCount] || 0) + 1;
+        if (digitCount > 0) {
+          digitStats[digitCount] = (digitStats[digitCount] || 0) + 1;
+        }
       }
     });
     
-    return stats;
+    return digitStats;
   };
 
-  const stats = calculateStats();
-  const sortedDigitCounts = Object.keys(stats)
-    .map(Number)
-    .sort((a, b) => a - b);
+  // Memoize statistics calculations
+  const stats = useMemo(() => calculateStats(), [registrations]);
+  
+  // Filter out entries with 0 count
+  const filteredEntryStats = useMemo(() => {
+    return Object.fromEntries(
+      Object.entries(stats.entryStats).filter(([entry, count]) => {
+        return count > 0;
+      })
+    );
+  }, [stats.entryStats]);
+  
+  const sortedEntries = useMemo(() => {
+    return Object.keys(filteredEntryStats)
+      .map(Number)
+      .sort((a, b) => a - b);
+  }, [filteredEntryStats]);
+  
+  const sortedOtherEntries = useMemo(() => {
+    return Object.keys(stats.otherStats)
+      .filter(key => stats.otherStats[key] > 0)
+      .sort();
+  }, [stats.otherStats]);
+  
   const totalRegistrations = registrations.length;
+  
+  // Digit count statistics
+  const digitStats = useMemo(() => calculateDigitStats(), [registrations]);
+  const sortedDigitCounts = useMemo(() => {
+    return Object.keys(digitStats)
+      .map(Number)
+      .sort((a, b) => a - b);
+  }, [digitStats]);
 
   if (!isAuthenticated) {
     return (
@@ -188,7 +306,7 @@ export default function KitStatsPage() {
               <h1 className="text-4xl md:text-5xl font-extrabold mb-2 bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
                 Kit Number Statistics
               </h1>
-              <p className="text-gray-400">Distribution of kit numbers by digit count</p>
+              <p className="text-gray-400">Distribution of kit numbers by entry number</p>
             </div>
             <div className="flex gap-3">
               <button
@@ -271,6 +389,186 @@ export default function KitStatsPage() {
         {/* Statistics Grid */}
         <div className="bg-gray-800/90 backdrop-blur-xl rounded-3xl shadow-2xl overflow-hidden border border-gray-700/50">
           <div className="p-6 md:p-8">
+            <h2 className="text-2xl font-bold text-gray-200 mb-6">Distribution by Entry Number</h2>
+            
+            {loading ? (
+              <div className="text-center py-16">
+                <svg className="animate-spin h-12 w-12 text-indigo-400 mx-auto mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <p className="text-gray-400">Loading statistics...</p>
+              </div>
+            ) : sortedEntries.length === 0 && sortedOtherEntries.length === 0 ? (
+              <div className="text-center py-16">
+                <div className="inline-block p-4 bg-gray-700 rounded-full mb-4">
+                  <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                  </svg>
+                </div>
+                <p className="text-gray-400 text-lg font-medium">No registrations found.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {sortedEntries.map(entry => {
+                  const count = filteredEntryStats[entry];
+                  const percentage = totalRegistrations > 0 ? ((count / totalRegistrations) * 100).toFixed(1) : 0;
+                  
+                  return (
+                    <div
+                      key={entry}
+                      className="bg-gradient-to-br from-indigo-900/30 to-purple-900/30 p-6 rounded-2xl border-2 border-indigo-700/50 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1"
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="p-3 bg-indigo-600/20 rounded-lg">
+                          <svg className="w-6 h-6 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
+                          </svg>
+                        </div>
+                        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                          Entry {entry}
+                        </span>
+                      </div>
+                      <div className="mb-2">
+                        <p className="text-3xl font-extrabold text-indigo-400">{count}</p>
+                        <p className="text-sm text-gray-400 mt-1">{percentage}% of total</p>
+                      </div>
+                      <div className="mt-4 h-2 bg-gray-700/50 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full transition-all duration-500"
+                          style={{ width: `${percentage}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  );
+                })}
+                {sortedOtherEntries.map(key => {
+                  const count = stats.otherStats[key];
+                  const digitCount = key.replace('other_', '');
+                  const percentage = totalRegistrations > 0 ? ((count / totalRegistrations) * 100).toFixed(1) : 0;
+                  
+                  return (
+                    <div
+                      key={key}
+                      className="bg-gradient-to-br from-gray-800/30 to-gray-700/30 p-6 rounded-2xl border-2 border-gray-600/50 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1"
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="p-3 bg-gray-600/20 rounded-lg">
+                          <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
+                          </svg>
+                        </div>
+                        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                          {digitCount} {digitCount === '1' ? 'Digit' : 'Digits'} (Other)
+                        </span>
+                      </div>
+                      <div className="mb-2">
+                        <p className="text-3xl font-extrabold text-gray-400">{count}</p>
+                        <p className="text-sm text-gray-400 mt-1">{percentage}% of total</p>
+                      </div>
+                      <div className="mt-4 h-2 bg-gray-700/50 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-gray-500 to-gray-600 rounded-full transition-all duration-500"
+                          style={{ width: `${percentage}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Detailed Table */}
+          {(sortedEntries.length > 0 || sortedOtherEntries.length > 0) && (
+            <div className="border-t border-gray-700/50 p-6 md:p-8">
+              <h2 className="text-2xl font-bold text-gray-200 mb-6">Detailed Breakdown</h2>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-700">
+                  <thead className="bg-gradient-to-r from-indigo-900/50 to-purple-900/50">
+                    <tr>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-300 uppercase tracking-wider">
+                        Entry Number
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-300 uppercase tracking-wider">
+                        Count
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-300 uppercase tracking-wider">
+                        Percentage
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-300 uppercase tracking-wider">
+                        Visual
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-gray-800 divide-y divide-gray-700">
+                    {sortedEntries.map(entry => {
+                      const count = filteredEntryStats[entry];
+                      const percentage = totalRegistrations > 0 ? ((count / totalRegistrations) * 100).toFixed(1) : 0;
+                      
+                      return (
+                        <tr key={entry} className="hover:bg-gradient-to-r hover:from-indigo-900/30 hover:to-purple-900/30 transition-all duration-200">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-indigo-600/30 text-indigo-300 border border-indigo-500/30">
+                              Entry {entry}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-lg font-bold text-gray-200">{count}</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-300">{percentage}%</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="w-full max-w-xs h-3 bg-gray-700/50 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full transition-all duration-500"
+                                style={{ width: `${percentage}%` }}
+                              ></div>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {sortedOtherEntries.map(key => {
+                      const count = stats.otherStats[key];
+                      const digitCount = key.replace('other_', '');
+                      const percentage = totalRegistrations > 0 ? ((count / totalRegistrations) * 100).toFixed(1) : 0;
+                      
+                      return (
+                        <tr key={key} className="hover:bg-gradient-to-r hover:from-gray-800/30 hover:to-gray-700/30 transition-all duration-200">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-gray-600/30 text-gray-300 border border-gray-500/30">
+                              {digitCount} {digitCount === '1' ? 'Digit' : 'Digits'} (Other)
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-lg font-bold text-gray-200">{count}</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-300">{percentage}%</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="w-full max-w-xs h-3 bg-gray-700/50 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-gradient-to-r from-gray-500 to-gray-600 rounded-full transition-all duration-500"
+                                style={{ width: `${percentage}%` }}
+                              ></div>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Digit Count Statistics */}
+        <div className="bg-gray-800/90 backdrop-blur-xl rounded-3xl shadow-2xl overflow-hidden border border-gray-700/50 mt-6">
+          <div className="p-6 md:p-8">
             <h2 className="text-2xl font-bold text-gray-200 mb-6">Distribution by Digit Count</h2>
             
             {loading ? (
@@ -293,17 +591,17 @@ export default function KitStatsPage() {
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                 {sortedDigitCounts.map(digitCount => {
-                  const count = stats[digitCount];
+                  const count = digitStats[digitCount];
                   const percentage = totalRegistrations > 0 ? ((count / totalRegistrations) * 100).toFixed(1) : 0;
                   
                   return (
                     <div
                       key={digitCount}
-                      className="bg-gradient-to-br from-indigo-900/30 to-purple-900/30 p-6 rounded-2xl border-2 border-indigo-700/50 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1"
+                      className="bg-gradient-to-br from-green-900/30 to-emerald-900/30 p-6 rounded-2xl border-2 border-green-700/50 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1"
                     >
                       <div className="flex items-center justify-between mb-3">
-                        <div className="p-3 bg-indigo-600/20 rounded-lg">
-                          <svg className="w-6 h-6 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <div className="p-3 bg-green-600/20 rounded-lg">
+                          <svg className="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
                           </svg>
                         </div>
@@ -312,12 +610,12 @@ export default function KitStatsPage() {
                         </span>
                       </div>
                       <div className="mb-2">
-                        <p className="text-3xl font-extrabold text-indigo-400">{count}</p>
+                        <p className="text-3xl font-extrabold text-green-400">{count}</p>
                         <p className="text-sm text-gray-400 mt-1">{percentage}% of total</p>
                       </div>
                       <div className="mt-4 h-2 bg-gray-700/50 rounded-full overflow-hidden">
                         <div
-                          className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full transition-all duration-500"
+                          className="h-full bg-gradient-to-r from-green-500 to-emerald-500 rounded-full transition-all duration-500"
                           style={{ width: `${percentage}%` }}
                         ></div>
                       </div>
@@ -328,13 +626,13 @@ export default function KitStatsPage() {
             )}
           </div>
 
-          {/* Detailed Table */}
+          {/* Digit Count Table */}
           {sortedDigitCounts.length > 0 && (
             <div className="border-t border-gray-700/50 p-6 md:p-8">
-              <h2 className="text-2xl font-bold text-gray-200 mb-6">Detailed Breakdown</h2>
+              <h2 className="text-2xl font-bold text-gray-200 mb-6">Digit Count Breakdown</h2>
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-700">
-                  <thead className="bg-gradient-to-r from-indigo-900/50 to-purple-900/50">
+                  <thead className="bg-gradient-to-r from-green-900/50 to-emerald-900/50">
                     <tr>
                       <th className="px-6 py-4 text-left text-xs font-bold text-gray-300 uppercase tracking-wider">
                         Digit Count
@@ -352,13 +650,13 @@ export default function KitStatsPage() {
                   </thead>
                   <tbody className="bg-gray-800 divide-y divide-gray-700">
                     {sortedDigitCounts.map(digitCount => {
-                      const count = stats[digitCount];
+                      const count = digitStats[digitCount];
                       const percentage = totalRegistrations > 0 ? ((count / totalRegistrations) * 100).toFixed(1) : 0;
                       
                       return (
-                        <tr key={digitCount} className="hover:bg-gradient-to-r hover:from-indigo-900/30 hover:to-purple-900/30 transition-all duration-200">
+                        <tr key={digitCount} className="hover:bg-gradient-to-r hover:from-green-900/30 hover:to-emerald-900/30 transition-all duration-200">
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-indigo-600/30 text-indigo-300 border border-indigo-500/30">
+                            <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-green-600/30 text-green-300 border border-green-500/30">
                               {digitCount} {digitCount === 1 ? 'Digit' : 'Digits'}
                             </span>
                           </td>
@@ -371,7 +669,7 @@ export default function KitStatsPage() {
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="w-full max-w-xs h-3 bg-gray-700/50 rounded-full overflow-hidden">
                               <div
-                                className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full transition-all duration-500"
+                                className="h-full bg-gradient-to-r from-green-500 to-emerald-500 rounded-full transition-all duration-500"
                                 style={{ width: `${percentage}%` }}
                               ></div>
                             </div>

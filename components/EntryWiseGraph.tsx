@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { Registration } from '@/lib/supabase';
 
@@ -10,7 +10,7 @@ interface EntryData {
 }
 
 export default function EntryWiseGraph() {
-  const [chartData, setChartData] = useState<EntryData[]>([]);
+  const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
@@ -22,12 +22,89 @@ export default function EntryWiseGraph() {
     '#14b8a6', '#06b6d4', '#0ea5e9', '#3b82f6', '#1d4ed8',
   ];
 
-  const extractEntry = (kitNumber: string): string => {
-    if (!kitNumber) return 'Unknown';
-    const numStr = String(kitNumber).trim();
-    if (numStr.length <= 3) return numStr.charAt(0);
-    return numStr.substring(0, 2);
+  // Extract entry number from kit number based on specific rules
+  const getEntryNumber = (kitNumber: string): number | null => {
+    if (!kitNumber) return null;
+    
+    const trimmed = kitNumber.trim();
+    if (trimmed.length === 0) return null;
+    
+    const digitCount = trimmed.length;
+    const kitNum = parseInt(trimmed);
+    
+    // Skip if not a valid number
+    if (isNaN(kitNum)) return null;
+    
+    // Entry 1: 1-digit numbers (1-9) and 2-digit numbers (10-80)
+    if (digitCount === 1) {
+      if (kitNum >= 1 && kitNum <= 9) return 1;
+    }
+    if (digitCount === 2) {
+      if (kitNum >= 10 && kitNum <= 80) return 1;
+      return null; // Other 2-digit numbers don't match any entry
+    }
+    
+    // For 3-digit numbers
+    if (digitCount === 3) {
+      const firstTwoDigits = parseInt(trimmed.substring(0, 2));
+      const firstDigit = parseInt(trimmed[0]);
+      
+      // Check 86 and 87 first (before single digit checks) - these go to entries 22 and 23
+      if (firstTwoDigits === 86) return 22;
+      if (firstTwoDigits === 87) return 23;
+      
+      // Then check single digit patterns for 3-digit numbers
+      // Entry 2: 3-digit numbers starting with 1 → displayed as "2" on x-axis
+      if (firstDigit === 1) return 2;
+      // Entry 3: 3-digit numbers starting with 2 → displayed as "3" on x-axis
+      if (firstDigit === 2) return 3;
+      // Entry 4: 3-digit numbers starting with 3 → displayed as "4" on x-axis
+      if (firstDigit === 3) return 4;
+      // Entry 5: 3-digit numbers starting with 4 → displayed as "5" on x-axis
+      if (firstDigit === 4) return 5;
+      // Entry 6: 3-digit numbers starting with 5 OR 6 → displayed as "6" on x-axis
+      // Examples: 500, 501, 600, 601 all go to Entry 6
+      if (firstDigit === 5) return 6;
+      if (firstDigit === 6) return 6;
+      // Entry 7: 3-digit numbers starting with 7
+      if (firstDigit === 7) return 7;
+      // Entry 8: 3-digit numbers starting with 8 (86 and 87 already handled above)
+      if (firstDigit === 8) return 8;
+      // Entry 9: 3-digit numbers starting with 9
+      if (firstDigit === 9) return 9;
+    }
+    
+    // For 4-digit and 5-digit numbers starting from 10 to 56
+    // The first 2 digits represent the entry number
+    if (digitCount === 4 || digitCount === 5) {
+      const firstTwoDigits = parseInt(trimmed.substring(0, 2));
+      if (!isNaN(firstTwoDigits) && firstTwoDigits >= 10 && firstTwoDigits <= 56) {
+        return firstTwoDigits;
+      }
+    }
+    
+    // For other cases, return null to keep them grouped separately
+    return null;
   };
+
+  // Memoize chart data
+  const chartData = useMemo(() => {
+    const stats: { [key: number]: number } = {};
+    
+    registrations.forEach(reg => {
+      if (reg.kit_number) {
+        const entryNumber = getEntryNumber(reg.kit_number);
+        
+        if (entryNumber !== null) {
+          stats[entryNumber] = (stats[entryNumber] || 0) + 1;
+        }
+      }
+    });
+    
+    return Object.entries(stats)
+      .map(([entry, count]) => ({ entry, count: count as number }))
+      .sort((a, b) => parseInt(a.entry, 10) - parseInt(b.entry, 10));
+  }, [registrations]);
 
   // Check screen size for responsive behavior
   useEffect(() => {
@@ -66,19 +143,8 @@ export default function EntryWiseGraph() {
       }
 
       const result = await response.json();
-      const registrations: Registration[] = result.data || [];
-
-      const entryMap = new Map<string, number>();
-      registrations.forEach((reg) => {
-        const entry = extractEntry(reg.kit_number);
-        entryMap.set(entry, (entryMap.get(entry) || 0) + 1);
-      });
-
-      const sortedEntries = Array.from(entryMap.entries())
-        .sort((a, b) => parseInt(a[0], 10) - parseInt(b[0], 10))
-        .map(([entry, count]) => ({ entry, count }));
-
-      setChartData(sortedEntries);
+      const fetchedRegistrations: Registration[] = result.data || [];
+      setRegistrations(fetchedRegistrations);
     } catch (err: any) {
       console.error('Error fetching data:', err);
       setError(err.message || 'Failed to load data');
@@ -127,7 +193,9 @@ export default function EntryWiseGraph() {
     );
   }
 
-  const totalRegistrations = chartData.reduce((sum, item) => sum + item.count, 0);
+  // Total registrations should be the actual count of all registrations, not just displayed entries
+  const totalRegistrations = registrations.length;
+  const displayedRegistrations = chartData.reduce((sum, item) => sum + item.count, 0);
   
   // Responsive settings
   const chartHeight = isMobile ? 300 : isTablet ? 320 : 400;

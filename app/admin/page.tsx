@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Registration } from '@/lib/supabase';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -24,6 +24,8 @@ export default function AdminPortal() {
   const [currentPage, setCurrentPage] = useState(1);
   const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [analyticsView, setAnalyticsView] = useState<'entry' | 'digit'>('entry');
+  const [isAnalyticsExpanded, setIsAnalyticsExpanded] = useState(false);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const previousCountRef = useRef<number>(0);
   const router = useRouter();
@@ -415,6 +417,142 @@ export default function AdminPortal() {
   const totalCount = registrations.length;
   const attendingCount = registrations.filter(r => r.attend_gala === 'Yes').length;
 
+  // Extract entry number from kit number based on specific rules
+  const getEntryNumber = (kitNumber: string): number | null => {
+    if (!kitNumber) return null;
+    
+    const trimmed = kitNumber.trim();
+    if (trimmed.length === 0) return null;
+    
+    const digitCount = trimmed.length;
+    const kitNum = parseInt(trimmed);
+    
+    // Skip if not a valid number
+    if (isNaN(kitNum)) return null;
+    
+    // Entry 1: 1-digit numbers (1-9) and 2-digit numbers (10-80)
+    if (digitCount === 1) {
+      if (kitNum >= 1 && kitNum <= 9) return 1;
+    }
+    if (digitCount === 2) {
+      if (kitNum >= 10 && kitNum <= 80) return 1;
+      return null; // Other 2-digit numbers don't match any entry
+    }
+    
+    // For 3-digit numbers
+    if (digitCount === 3) {
+      const firstTwoDigits = parseInt(trimmed.substring(0, 2));
+      const firstDigit = parseInt(trimmed[0]);
+      
+      // Check 86 and 87 first (before single digit checks) - these go to entries 22 and 23
+      if (firstTwoDigits === 86) return 22;
+      if (firstTwoDigits === 87) return 23;
+      
+      // Then check single digit patterns for 3-digit numbers
+      // Entry 2: 3-digit numbers starting with 1 → displayed as "2" on x-axis
+      if (firstDigit === 1) return 2;
+      // Entry 3: 3-digit numbers starting with 2 → displayed as "3" on x-axis
+      if (firstDigit === 2) return 3;
+      // Entry 4: 3-digit numbers starting with 3 → displayed as "4" on x-axis
+      if (firstDigit === 3) return 4;
+      // Entry 5: 3-digit numbers starting with 4 → displayed as "5" on x-axis
+      if (firstDigit === 4) return 5;
+      // Entry 6: 3-digit numbers starting with 5 OR 6 → displayed as "6" on x-axis
+      // Examples: 500, 501, 600, 601 all go to Entry 6
+      if (firstDigit === 5) return 6;
+      if (firstDigit === 6) return 6;
+      // Entry 7: 3-digit numbers starting with 7
+      if (firstDigit === 7) return 7;
+      // Entry 8: 3-digit numbers starting with 8 (86 and 87 already handled above)
+      if (firstDigit === 8) return 8;
+      // Entry 9: 3-digit numbers starting with 9
+      if (firstDigit === 9) return 9;
+    }
+    
+    // For 4-digit and 5-digit numbers starting from 10 to 56
+    // The first 2 digits represent the entry number
+    if (digitCount === 4 || digitCount === 5) {
+      const firstTwoDigits = parseInt(trimmed.substring(0, 2));
+      if (!isNaN(firstTwoDigits) && firstTwoDigits >= 10 && firstTwoDigits <= 56) {
+        return firstTwoDigits;
+      }
+    }
+    
+    // For other cases, return null to keep them grouped separately
+    return null;
+  };
+
+  // Calculate statistics by entry number
+  const calculateStats = () => {
+    const stats: { [key: number]: number } = {};
+    const otherStats: { [key: string]: number } = {}; // For entries that don't match rules
+    
+    registrations.forEach(reg => {
+      if (reg.kit_number) {
+        const entryNumber = getEntryNumber(reg.kit_number);
+        
+        if (entryNumber !== null) {
+          stats[entryNumber] = (stats[entryNumber] || 0) + 1;
+        } else {
+          // Keep other entries grouped by digit count
+          const digitCount = reg.kit_number.trim().length;
+          const key = `other_${digitCount}`;
+          otherStats[key] = (otherStats[key] || 0) + 1;
+        }
+      }
+    });
+    
+    return { entryStats: stats, otherStats };
+  };
+
+  // Calculate statistics by digit count
+  const calculateDigitStats = () => {
+    const digitStats: { [key: number]: number } = {};
+    
+    registrations.forEach(reg => {
+      if (reg.kit_number) {
+        const digitCount = reg.kit_number.trim().length;
+        if (digitCount > 0) {
+          digitStats[digitCount] = (digitStats[digitCount] || 0) + 1;
+        }
+      }
+    });
+    
+    return digitStats;
+  };
+
+  // Memoize statistics calculations
+  const stats = useMemo(() => calculateStats(), [registrations]);
+  
+  // Filter out entries with 0 count
+  const filteredEntryStats = useMemo(() => {
+    return Object.fromEntries(
+      Object.entries(stats.entryStats).filter(([entry, count]) => {
+        return count > 0;
+      })
+    );
+  }, [stats.entryStats]);
+  
+  const sortedEntries = useMemo(() => {
+    return Object.keys(filteredEntryStats)
+      .map(Number)
+      .sort((a, b) => a - b);
+  }, [filteredEntryStats]);
+  
+  const sortedOtherEntries = useMemo(() => {
+    return Object.keys(stats.otherStats)
+      .filter(key => stats.otherStats[key] > 0)
+      .sort();
+  }, [stats.otherStats]);
+  
+  // Digit count statistics
+  const digitStats = useMemo(() => calculateDigitStats(), [registrations]);
+  const sortedDigitCounts = useMemo(() => {
+    return Object.keys(digitStats)
+      .map(Number)
+      .sort((a, b) => a - b);
+  }, [digitStats]);
+
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-indigo-950 via-purple-900 via-pink-900 to-indigo-950 flex items-center justify-center px-4 relative overflow-hidden">
@@ -583,6 +721,146 @@ export default function AdminPortal() {
               <p className="text-4xl font-extrabold text-yellow-400">{totalCount - attendingCount}</p>
             </div>
           </div>
+
+          {/* Analytics Section with Dropdown */}
+          {((sortedEntries.length > 0 || sortedOtherEntries.length > 0) || sortedDigitCounts.length > 0) && (
+            <div className="bg-gray-800/90 backdrop-blur-xl rounded-3xl shadow-2xl overflow-hidden border border-gray-700/50 mb-6">
+              {/* Collapsible Header */}
+              <button
+                onClick={() => setIsAnalyticsExpanded(!isAnalyticsExpanded)}
+                className="w-full p-6 md:p-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:bg-gray-700/30 transition-colors duration-200"
+              >
+                <div className="flex items-center gap-3">
+                  <h2 className="text-2xl font-bold text-gray-200">
+                    Analytics
+                  </h2>
+                  <svg
+                    className={`w-5 h-5 text-gray-400 transition-transform duration-200 ${isAnalyticsExpanded ? 'rotate-180' : ''}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+                <div className="relative">
+                  <select
+                    value={analyticsView}
+                    onChange={(e) => setAnalyticsView(e.target.value as 'entry' | 'digit')}
+                    onClick={(e) => e.stopPropagation()}
+                    className="appearance-none bg-gray-700/50 border-2 border-gray-600 rounded-xl px-6 py-3 pr-10 text-white font-semibold cursor-pointer hover:border-indigo-500 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  >
+                    <option value="entry">Distribution by Entry Number</option>
+                    <option value="digit">Distribution by Digit Count</option>
+                  </select>
+                  <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                    <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                </div>
+              </button>
+
+              {/* Collapsible Content */}
+              {isAnalyticsExpanded && (
+                <div className="px-6 md:px-8 pb-6 md:pb-8">
+                  <div className="mb-6">
+                    <h3 className="text-xl font-semibold text-gray-300">
+                      {analyticsView === 'entry' ? 'Distribution by Entry Number' : 'Distribution by Digit Count'}
+                    </h3>
+                  </div>
+
+                {/* Entry-based Analytics */}
+                {analyticsView === 'entry' && (sortedEntries.length > 0 || sortedOtherEntries.length > 0) && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    {sortedEntries.map(entry => {
+                      const count = filteredEntryStats[entry];
+                      const percentage = totalCount > 0 ? ((count / totalCount) * 100).toFixed(1) : 0;
+                      
+                      return (
+                        <div
+                          key={entry}
+                          className="bg-gradient-to-br from-indigo-900/30 to-purple-900/30 p-6 rounded-2xl border-2 border-indigo-700/50 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1"
+                        >
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="p-3 bg-indigo-600/20 rounded-lg">
+                              <svg className="w-6 h-6 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
+                              </svg>
+                            </div>
+                            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                              Entry {entry}
+                            </span>
+                          </div>
+                          <div className="mb-2">
+                            <p className="text-3xl font-extrabold text-indigo-400">{count}</p>
+                            <p className="text-sm text-gray-400 mt-1">{percentage}% of total</p>
+                          </div>
+                          <div className="mt-4 h-2 bg-gray-700/50 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full transition-all duration-500"
+                              style={{ width: `${percentage}%` }}
+                            ></div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Digit Count Analytics */}
+                {analyticsView === 'digit' && sortedDigitCounts.length > 0 && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    {sortedDigitCounts.map(digitCount => {
+                      const count = digitStats[digitCount];
+                      const percentage = totalCount > 0 ? ((count / totalCount) * 100).toFixed(1) : 0;
+                      
+                      return (
+                        <div
+                          key={digitCount}
+                          className="bg-gradient-to-br from-green-900/30 to-emerald-900/30 p-6 rounded-2xl border-2 border-green-700/50 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1"
+                        >
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="p-3 bg-green-600/20 rounded-lg">
+                              <svg className="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
+                              </svg>
+                            </div>
+                            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                              {digitCount} {digitCount === 1 ? 'Digit' : 'Digits'}
+                            </span>
+                          </div>
+                          <div className="mb-2">
+                            <p className="text-3xl font-extrabold text-green-400">{count}</p>
+                            <p className="text-sm text-gray-400 mt-1">{percentage}% of total</p>
+                          </div>
+                          <div className="mt-4 h-2 bg-gray-700/50 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-gradient-to-r from-green-500 to-emerald-500 rounded-full transition-all duration-500"
+                              style={{ width: `${percentage}%` }}
+                            ></div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* No data message */}
+                {analyticsView === 'entry' && sortedEntries.length === 0 && sortedOtherEntries.length === 0 && (
+                  <div className="text-center py-12">
+                    <p className="text-gray-400">No entry-based data available</p>
+                  </div>
+                )}
+                {analyticsView === 'digit' && sortedDigitCounts.length === 0 && (
+                  <div className="text-center py-12">
+                    <p className="text-gray-400">No digit count data available</p>
+                  </div>
+                )}
+              </div>
+            )}
+            </div>
+          )}
 
           {/* Search and Action Buttons */}
           <div className="mb-4">
