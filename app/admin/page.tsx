@@ -26,6 +26,9 @@ export default function AdminPortal() {
   const [error, setError] = useState<string | null>(null);
   const [analyticsView, setAnalyticsView] = useState<'entry' | 'digit'>('entry');
   const [isAnalyticsExpanded, setIsAnalyticsExpanded] = useState(false);
+  const [isRegistrationOpen, setIsRegistrationOpen] = useState(true);
+  const [isTogglingStatus, setIsTogglingStatus] = useState(false);
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const previousCountRef = useRef<number>(0);
   const router = useRouter();
@@ -81,14 +84,57 @@ export default function AdminPortal() {
     }
   }, [registrations.length]);
 
+  // Fetch registration status
+  const fetchRegistrationStatus = useCallback(async () => {
+    try {
+      const response = await fetch('/api/admin/registration-status');
+      if (response.ok) {
+        const data = await response.json();
+        setIsRegistrationOpen(data.isOpen !== false);
+      }
+    } catch (error) {
+      console.error('Error fetching registration status:', error);
+    }
+  }, []);
+
   // Check authentication on mount
   useEffect(() => {
     const authStatus = sessionStorage.getItem('admin_authenticated');
     if (authStatus === 'true') {
       setIsAuthenticated(true);
       fetchRegistrations(false);
+      fetchRegistrationStatus();
     }
-  }, []);
+  }, [fetchRegistrations, fetchRegistrationStatus]);
+
+  // Toggle registration status
+  const toggleRegistrationStatus = async () => {
+    setIsTogglingStatus(true);
+    try {
+      const newStatus = !isRegistrationOpen;
+      const response = await fetch('/api/admin/registration-status', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ isOpen: newStatus }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setIsRegistrationOpen(data.isOpen);
+        setMessage({ type: 'success', text: data.message || `Registration ${newStatus ? 'opened' : 'closed'} successfully` });
+      } else {
+        const errorData = await response.json();
+        setMessage({ type: 'error', text: errorData.error || 'Failed to update registration status' });
+      }
+    } catch (error: any) {
+      console.error('Error toggling registration status:', error);
+      setMessage({ type: 'error', text: error.message || 'Failed to update registration status' });
+    } finally {
+      setIsTogglingStatus(false);
+    }
+  };
 
   // Real-time polling with smart refresh
   useEffect(() => {
@@ -655,6 +701,36 @@ export default function AdminPortal() {
           </div>
         )}
 
+        {/* Message Banner */}
+        {message && (
+          <div className={`mb-6 p-4 border-l-4 rounded-lg flex items-start justify-between ${
+            message.type === 'success'
+              ? 'bg-green-900/30 text-green-300 border-green-500'
+              : 'bg-red-900/30 text-red-300 border-red-500'
+          }`}>
+            <div className="flex items-start gap-3">
+              {message.type === 'success' ? (
+                <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              ) : (
+                <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4v2m0-11a9 9 0 110 18 9 9 0 010-18z" />
+                </svg>
+              )}
+              <div>
+                <p className="font-semibold">{message.type === 'success' ? 'Success' : 'Error'}</p>
+                <p className="text-sm">{message.text}</p>
+              </div>
+            </div>
+            <button onClick={() => setMessage(null)} className={`${message.type === 'success' ? 'text-green-300 hover:text-green-200' : 'text-red-300 hover:text-red-200'}`}>
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        )}
+
         <div className="bg-gray-800/90 backdrop-blur-xl rounded-3xl shadow-2xl p-6 md:p-8 mb-6 border border-gray-700/50">
           <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
             <div>
@@ -663,7 +739,44 @@ export default function AdminPortal() {
               </h1>
               <p className="text-gray-400">Manage registrations and view statistics</p>
             </div>
-            <div className="flex gap-3">
+            <div className="flex gap-3 flex-wrap">
+              <button
+                onClick={toggleRegistrationStatus}
+                disabled={isTogglingStatus}
+                className={`px-6 py-3 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 ${
+                  isRegistrationOpen
+                    ? 'bg-gradient-to-r from-orange-500 to-red-600 text-white hover:from-orange-600 hover:to-red-700'
+                    : 'bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700'
+                }`}
+              >
+                {isTogglingStatus ? (
+                  <>
+                    <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>Updating...</span>
+                  </>
+                ) : (
+                  <>
+                    {isRegistrationOpen ? (
+                      <>
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                        <span>Close Registration</span>
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        <span>Open Registration</span>
+                      </>
+                    )}
+                  </>
+                )}
+              </button>
               <button
                 onClick={() => setShowPasswordModal(true)}
                 className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-6 py-3 rounded-xl font-semibold shadow-lg hover:shadow-xl hover:from-green-600 hover:to-emerald-700 transition-all duration-300 transform hover:scale-105 active:scale-95"

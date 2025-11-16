@@ -1,12 +1,38 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import RegistrationForm from '@/components/RegistrationForm';
 import EntryWiseGraph from '@/components/EntryWiseGraph';
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<'form' | 'analytics'>('form');
+  const [isRegistrationOpen, setIsRegistrationOpen] = useState(true);
+
+  // Check registration status on mount
+  useEffect(() => {
+    const checkRegistrationStatus = async () => {
+      try {
+        const response = await fetch('/api/registration-status', {
+          cache: 'no-store',
+        });
+        const data = await response.json();
+        const isOpen = data.isOpen !== false;
+        setIsRegistrationOpen(isOpen);
+        
+        // If registration is closed, switch to analytics tab
+        if (!isOpen) {
+          setActiveTab('analytics');
+        }
+      } catch (error) {
+        console.error('Error checking registration status:', error);
+        // Default to open on error
+        setIsRegistrationOpen(true);
+      }
+    };
+
+    checkRegistrationStatus();
+  }, []);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-indigo-900">
@@ -77,24 +103,43 @@ export default function Home() {
             </p>
           </div>
 
-          {/* Important Notice - REGISTRATION IS MANDATORY */}
+          {/* Important Notice - REGISTRATION STATUS */}
           <div className="max-w-3xl mx-4 w-full mb-8">
-            <div className="bg-gradient-to-r from-yellow-500/30 via-orange-500/30 to-red-500/30 backdrop-blur-md rounded-3xl p-8 md:p-10 border-4 border-yellow-400/70 shadow-2xl ring-2 ring-yellow-400/30">
-              <div className="flex flex-col items-center text-center gap-3">
-                <div className="flex items-center justify-center gap-4 w-full">
-                  <svg className="w-8 h-8 md:w-10 md:h-10 text-yellow-300 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                  </svg>
-                  <p className="text-yellow-300 font-extrabold text-lg sm:text-xl md:text-2xl leading-tight drop-shadow-2xl">
-                    REGISTRATION IS MANDATORY
+            {isRegistrationOpen ? (
+              <div className="bg-gradient-to-r from-yellow-500/30 via-orange-500/30 to-red-500/30 backdrop-blur-md rounded-3xl p-8 md:p-10 border-4 border-yellow-400/70 shadow-2xl ring-2 ring-yellow-400/30">
+                <div className="flex flex-col items-center text-center gap-3">
+                  <div className="flex items-center justify-center gap-4 w-full">
+                    <svg className="w-8 h-8 md:w-10 md:h-10 text-yellow-300 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                    <p className="text-yellow-300 font-extrabold text-lg sm:text-xl md:text-2xl leading-tight drop-shadow-2xl">
+                      REGISTRATION IS MANDATORY
+                    </p>
+                  </div>
+
+                  <p className="text-white/95 font-semibold text-base md:text-lg">
+                    Open for all Kohatians
                   </p>
                 </div>
-
-                <p className="text-white/95 font-semibold text-base md:text-lg">
-                  Open for all Kohatians
-                </p>
               </div>
-            </div>
+            ) : (
+              <div className="bg-gradient-to-r from-red-500/30 via-orange-500/30 to-red-500/30 backdrop-blur-md rounded-3xl p-8 md:p-10 border-4 border-red-400/70 shadow-2xl ring-2 ring-red-400/30">
+                <div className="flex flex-col items-center text-center gap-3">
+                  <div className="flex items-center justify-center gap-4 w-full">
+                    <svg className="w-8 h-8 md:w-10 md:h-10 text-red-300 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                    </svg>
+                    <p className="text-red-300 font-extrabold text-lg sm:text-xl md:text-2xl leading-tight drop-shadow-2xl">
+                      REGISTRATION CLOSED
+                    </p>
+                  </div>
+
+                  <p className="text-white/95 font-semibold text-base md:text-lg">
+                    The registration period has ended
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Call to Action Button */}
@@ -115,21 +160,23 @@ export default function Home() {
         <div className="max-w-7xl mx-auto relative z-10">
           {/* Tab Buttons */}
           <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mb-8 justify-center">
-            <button
-              onClick={() => setActiveTab('form')}
-              className={`px-6 sm:px-8 py-3 sm:py-4 rounded-xl font-bold text-base sm:text-lg transition-all duration-300 shadow-lg transform hover:scale-105 ${
-                activeTab === 'form'
-                  ? 'bg-gradient-to-r from-indigo-500 to-purple-500 text-white shadow-indigo-500/50'
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-              }`}
-            >
-              <span className="flex items-center gap-2 justify-center">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-                Registration Form
-              </span>
-            </button>
+            {isRegistrationOpen && (
+              <button
+                onClick={() => setActiveTab('form')}
+                className={`px-6 sm:px-8 py-3 sm:py-4 rounded-xl font-bold text-base sm:text-lg transition-all duration-300 shadow-lg transform hover:scale-105 ${
+                  activeTab === 'form'
+                    ? 'bg-gradient-to-r from-indigo-500 to-purple-500 text-white shadow-indigo-500/50'
+                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                }`}
+              >
+                <span className="flex items-center gap-2 justify-center">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                  Registration Form
+                </span>
+              </button>
+            )}
             <button
               onClick={() => setActiveTab('analytics')}
               className={`px-6 sm:px-8 py-3 sm:py-4 rounded-xl font-bold text-base sm:text-lg transition-all duration-300 shadow-lg transform hover:scale-105 ${
@@ -149,8 +196,8 @@ export default function Home() {
 
           {/* Content Area */}
           <div className="bg-gray-800/90 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-2xl p-6 sm:p-12 border border-gray-700/50 hover:shadow-purple-500/20 transition-all duration-300">
-            {/* Registration Form Tab */}
-            {activeTab === 'form' && (
+            {/* Registration Form Tab - Only show if registration is open */}
+            {isRegistrationOpen && activeTab === 'form' && (
               <div className="animate-fadeIn">
                 <div className="text-center mb-8">
                   <h2 className="text-3xl md:text-4xl font-extrabold mb-4 bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">

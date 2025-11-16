@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import Image from 'next/image';
 
@@ -23,6 +23,8 @@ export default function RegistrationForm() {
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [isRegistrationOpen, setIsRegistrationOpen] = useState(true);
+  const [isCheckingStatus, setIsCheckingStatus] = useState(true);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -38,6 +40,27 @@ export default function RegistrationForm() {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
+  // Check registration status on mount
+  useEffect(() => {
+    const checkRegistrationStatus = async () => {
+      try {
+        const response = await fetch('/api/registration-status', {
+          cache: 'no-store',
+        });
+        const data = await response.json();
+        setIsRegistrationOpen(data.isOpen !== false);
+      } catch (error) {
+        console.error('Error checking registration status:', error);
+        // Default to open on error
+        setIsRegistrationOpen(true);
+      } finally {
+        setIsCheckingStatus(false);
+      }
+    };
+
+    checkRegistrationStatus();
+  }, []);
+
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -52,37 +75,41 @@ export default function RegistrationForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Check if registration is open
+    if (!isRegistrationOpen) {
+      setMessage({
+        type: 'error',
+        text: 'Registration is currently closed. The registration period has ended.'
+      });
+      return;
+    }
+
     setIsSubmitting(true);
     setMessage(null);
 
     try {
+      // Double-check registration status before submitting
+      const statusResponse = await fetch('/api/registration-status', {
+        cache: 'no-store',
+      });
+      const statusData = await statusResponse.json();
+      
+      if (!statusData.isOpen) {
+        setMessage({
+          type: 'error',
+          text: 'Registration is currently closed. The registration period has ended.'
+        });
+        setIsSubmitting(false);
+        setIsRegistrationOpen(false);
+        return;
+      }
       // Validate kit number is numeric only
       const kitNumber = formData.kit_number.trim();
       if (!kitNumber || !/^\d+$/.test(kitNumber)) {
         setMessage({ 
           type: 'error', 
           text: 'Kit number must contain only numbers (0-9)' 
-        });
-        setIsSubmitting(false);
-        return;
-      }
-
-      // Check if kit number already exists - CRITICAL: Only one kit number can register once
-      const { data: existing, error: checkError } = await supabase
-        .from('registrations')
-        .select('kit_number')
-        .eq('kit_number', kitNumber)
-        .maybeSingle();
-
-      if (checkError && checkError.code !== 'PGRST116') {
-        // PGRST116 is "not found" which is fine, any other error is a problem
-        throw checkError;
-      }
-
-      if (existing) {
-        setMessage({ 
-          type: 'error', 
-          text: `Kit number ${formData.kit_number} has already been registered! Each kit number can only be registered once.` 
         });
         setIsSubmitting(false);
         return;
@@ -127,10 +154,13 @@ export default function RegistrationForm() {
         }
       }
 
-      // Insert registration
-      const { error: insertError } = await supabase
-        .from('registrations')
-        .insert([{
+      // Submit registration through API endpoint (which checks status server-side)
+      const response = await fetch('/api/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
           full_name: formData.full_name.trim(),
           kit_number: kitNumber,
           email: formData.email.trim(),
@@ -143,28 +173,17 @@ export default function RegistrationForm() {
           morale: formData.morale,
           excited_for_gala: formData.excited_for_gala,
           photo_url: photoUrl,
-        }]);
+        }),
+      });
 
-      if (insertError) {
-        // Check if it's a unique constraint violation
-        if (insertError.code === '23505' || insertError.message.includes('unique')) {
-          setMessage({ 
-            type: 'error', 
-            text: `Kit number ${formData.kit_number} has already been registered! Each kit number can only be registered once.` 
-          });
-        } else {
-          throw insertError;
-        }
-        setIsSubmitting(false);
-        return;
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Registration failed');
       }
 
-      // Show success message - include note about photo if it wasn't uploaded
-      const successMessage = photoUrl 
-        ? 'Registration successful! We look forward to seeing you at the Gala.' 
-        : 'Registration successful!';
-      
-      setMessage({ type: 'success', text: successMessage });
+      // Show success message
+      setMessage({ type: 'success', text: result.message || 'Registration successful! We look forward to seeing you at the Gala.' });
       
       // Reset form
       setFormData({
@@ -194,6 +213,41 @@ export default function RegistrationForm() {
       setIsSubmitting(false);
     }
   };
+
+  // Show loading state while checking status
+  if (isCheckingStatus) {
+    return (
+      <div className="w-full flex items-center justify-center py-12">
+        <div className="text-center">
+          <svg className="animate-spin h-10 w-10 text-indigo-500 mx-auto mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <p className="text-gray-400 text-sm">Checking registration status...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show closed message if registration is closed
+  if (!isRegistrationOpen) {
+    return (
+      <div className="space-y-8">
+        <div className="p-6 rounded-xl shadow-lg border-l-4 bg-gradient-to-r from-red-900/30 to-rose-900/30 text-red-300 border-red-500">
+          <div className="flex items-center gap-3">
+            <svg className="w-8 h-8 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+            </svg>
+            <div>
+              <h3 className="font-bold text-xl mb-2">Registration Closed</h3>
+              <p className="font-medium">The registration period has ended. We are no longer accepting new registrations.</p>
+              <p className="text-sm mt-2 text-red-200">Thank you for your interest in the Kohatians Reunion 2025!</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-8">
@@ -440,7 +494,7 @@ export default function RegistrationForm() {
       <div className="pt-4">
         <button
           type="submit"
-          disabled={isSubmitting}
+          disabled={isSubmitting || !isRegistrationOpen}
           className="w-full bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white py-4 px-8 rounded-xl font-bold text-lg shadow-2xl hover:shadow-purple-500/50 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-[1.02] active:scale-[0.98] relative overflow-hidden group"
         >
           <span className="relative z-10 flex items-center justify-center gap-2">
