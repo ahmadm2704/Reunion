@@ -29,6 +29,23 @@ export default function AdminPortal() {
   const [isRegistrationOpen, setIsRegistrationOpen] = useState(true);
   const [isTogglingStatus, setIsTogglingStatus] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [showAddCandidateModal, setShowAddCandidateModal] = useState(false);
+  const [newCandidateData, setNewCandidateData] = useState<Partial<Registration>>({
+    full_name: '',
+    kit_number: '',
+    email: '',
+    whatsapp_number: '',
+    car_number_plate: '',
+    house: '',
+    profession: '',
+    postal_address: '',
+    attend_gala: 'Yes',
+    morale: '',
+    excited_for_gala: '',
+    photo_url: '',
+  });
+  const [isAddingCandidate, setIsAddingCandidate] = useState(false);
+  const [addCandidateMessage, setAddCandidateMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const previousCountRef = useRef<number>(0);
   const router = useRouter();
@@ -331,6 +348,114 @@ export default function AdminPortal() {
       setRegistrations(previousRegistrations);
       setError(error.message || 'Error deleting registration');
       console.error('❌ Error deleting registration:', error);
+    }
+  };
+
+  const handleAddCandidateChange = (field: string, value: any) => {
+    // For kit_number, only allow numeric input
+    if (field === 'kit_number') {
+      const numericValue = String(value).replace(/\D/g, '');
+      setNewCandidateData(prev => ({
+        ...prev,
+        [field]: numericValue
+      }));
+      return;
+    }
+    
+    setNewCandidateData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handleAddCandidate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsAddingCandidate(true);
+    setAddCandidateMessage(null);
+
+    try {
+      // Validate required fields
+      const requiredFields = ['full_name', 'kit_number', 'email', 'whatsapp_number', 'house', 'profession', 'attend_gala', 'morale', 'excited_for_gala'];
+      for (const field of requiredFields) {
+        if (!newCandidateData[field as keyof Registration] || String(newCandidateData[field as keyof Registration]).trim() === '') {
+          setAddCandidateMessage({ 
+            type: 'error', 
+            text: `${field.replace('_', ' ')} is required` 
+          });
+          setIsAddingCandidate(false);
+          return;
+        }
+      }
+
+      // Validate kit number is numeric only
+      const kitNumber = String(newCandidateData.kit_number || '').trim();
+      if (!kitNumber || !/^\d+$/.test(kitNumber)) {
+        setAddCandidateMessage({ 
+          type: 'error', 
+          text: 'Kit number must contain only numbers (0-9)' 
+        });
+        setIsAddingCandidate(false);
+        return;
+      }
+
+      const response = await fetch('/api/admin/registrations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          full_name: newCandidateData.full_name?.trim(),
+          kit_number: kitNumber,
+          email: newCandidateData.email?.trim(),
+          whatsapp_number: newCandidateData.whatsapp_number?.trim(),
+          car_number_plate: newCandidateData.car_number_plate?.trim() || 'N/A',
+          house: newCandidateData.house,
+          profession: newCandidateData.profession?.trim(),
+          postal_address: newCandidateData.postal_address?.trim() || '',
+          attend_gala: newCandidateData.attend_gala,
+          morale: newCandidateData.morale,
+          excited_for_gala: newCandidateData.excited_for_gala,
+          photo_url: newCandidateData.photo_url || '',
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to add candidate');
+      }
+
+      setAddCandidateMessage({ type: 'success', text: result.message || 'Candidate added successfully!' });
+      
+      // Reset form
+      setNewCandidateData({
+        full_name: '',
+        kit_number: '',
+        email: '',
+        whatsapp_number: '',
+        car_number_plate: '',
+        house: '',
+        profession: '',
+        postal_address: '',
+        attend_gala: 'Yes',
+        morale: '',
+        excited_for_gala: '',
+        photo_url: '',
+      });
+
+      // Refresh registrations
+      await fetchRegistrations(false);
+
+      // Close modal after 2 seconds
+      setTimeout(() => {
+        setShowAddCandidateModal(false);
+        setAddCandidateMessage(null);
+      }, 2000);
+    } catch (error: any) {
+      console.error('❌ Error adding candidate:', error);
+      setAddCandidateMessage({ type: 'error', text: error.message || 'Failed to add candidate' });
+    } finally {
+      setIsAddingCandidate(false);
     }
   };
 
@@ -996,6 +1121,15 @@ export default function AdminPortal() {
           <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
             <div className="flex gap-3 flex-wrap">
               <button
+                onClick={() => setShowAddCandidateModal(true)}
+                className="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-3 rounded-xl font-semibold shadow-lg hover:shadow-xl hover:from-green-700 hover:to-emerald-700 transition-all duration-300 transform hover:scale-105 active:scale-95 flex items-center gap-2"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Add Candidate
+              </button>
+              <button
                 onClick={() => fetchRegistrations(true)}
                 disabled={loading}
                 className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl font-semibold shadow-lg hover:shadow-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105 active:scale-95 flex items-center gap-2"
@@ -1628,6 +1762,288 @@ export default function AdminPortal() {
                     className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl font-semibold hover:from-indigo-700 hover:to-purple-700 transition-all duration-300"
                   >
                     Change Password
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Candidate Modal */}
+      {showAddCandidateModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-gray-800/95 backdrop-blur-xl rounded-3xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto border border-gray-700/50 my-8">
+            <div className="p-8">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-3xl font-extrabold bg-gradient-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent">
+                  Add New Candidate
+                </h2>
+                <button
+                  onClick={() => {
+                    setShowAddCandidateModal(false);
+                    setNewCandidateData({
+                      full_name: '',
+                      kit_number: '',
+                      email: '',
+                      whatsapp_number: '',
+                      car_number_plate: '',
+                      house: '',
+                      profession: '',
+                      postal_address: '',
+                      attend_gala: 'Yes',
+                      morale: '',
+                      excited_for_gala: '',
+                      photo_url: '',
+                    });
+                    setAddCandidateMessage(null);
+                  }}
+                  className="p-2 hover:bg-gray-700 rounded-full transition-colors text-gray-400 hover:text-gray-200"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {addCandidateMessage && (
+                <div className={`mb-6 p-4 rounded-xl border-l-4 ${
+                  addCandidateMessage.type === 'success' 
+                    ? 'bg-green-900/30 text-green-300 border-green-500' 
+                    : 'bg-red-900/30 text-red-300 border-red-500'
+                }`}>
+                  {addCandidateMessage.text}
+                </div>
+              )}
+
+              <form onSubmit={handleAddCandidate} className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Full Name */}
+                  <div>
+                    <label className="text-sm font-medium text-gray-400 mb-2 block">
+                      Full Name <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={newCandidateData.full_name || ''}
+                      onChange={(e) => handleAddCandidateChange('full_name', e.target.value)}
+                      className="w-full px-4 py-2 bg-gray-700/50 border border-gray-600 rounded-lg text-white focus:border-green-500 focus:ring-2 focus:ring-green-500/30"
+                      required
+                    />
+                  </div>
+
+                  {/* Kit Number */}
+                  <div>
+                    <label className="text-sm font-medium text-gray-400 mb-2 block">
+                      Kit Number <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={newCandidateData.kit_number || ''}
+                      onChange={(e) => handleAddCandidateChange('kit_number', e.target.value)}
+                      onKeyDown={(e) => {
+                        if (!/[0-9]/.test(e.key) && !['Backspace', 'Delete', 'Tab', 'Escape', 'Enter', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key) && !(e.key === 'a' && e.ctrlKey) && !(e.key === 'c' && e.ctrlKey) && !(e.key === 'v' && e.ctrlKey) && !(e.key === 'x' && e.ctrlKey)) {
+                          e.preventDefault();
+                        }
+                      }}
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      className="w-full px-4 py-2 bg-gray-700/50 border border-gray-600 rounded-lg text-white focus:border-green-500 focus:ring-2 focus:ring-green-500/30"
+                      placeholder="Numbers only"
+                      required
+                    />
+                    <p className="text-xs text-gray-400 mt-1">Only numbers (0-9) are allowed</p>
+                  </div>
+
+                  {/* Email */}
+                  <div>
+                    <label className="text-sm font-medium text-gray-400 mb-2 block">
+                      Email <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      type="email"
+                      value={newCandidateData.email || ''}
+                      onChange={(e) => handleAddCandidateChange('email', e.target.value)}
+                      className="w-full px-4 py-2 bg-gray-700/50 border border-gray-600 rounded-lg text-white focus:border-green-500 focus:ring-2 focus:ring-green-500/30"
+                      required
+                    />
+                  </div>
+
+                  {/* WhatsApp */}
+                  <div>
+                    <label className="text-sm font-medium text-gray-400 mb-2 block">
+                      WhatsApp Number <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={newCandidateData.whatsapp_number || ''}
+                      onChange={(e) => handleAddCandidateChange('whatsapp_number', e.target.value)}
+                      className="w-full px-4 py-2 bg-gray-700/50 border border-gray-600 rounded-lg text-white focus:border-green-500 focus:ring-2 focus:ring-green-500/30"
+                      required
+                    />
+                  </div>
+
+                  {/* Car Number Plate */}
+                  <div>
+                    <label className="text-sm font-medium text-gray-400 mb-2 block">
+                      Car Number Plate <span className="text-gray-500 text-xs">(Optional)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={newCandidateData.car_number_plate || ''}
+                      onChange={(e) => handleAddCandidateChange('car_number_plate', e.target.value)}
+                      className="w-full px-4 py-2 bg-gray-700/50 border border-gray-600 rounded-lg text-white focus:border-green-500 focus:ring-2 focus:ring-green-500/30"
+                    />
+                  </div>
+
+                  {/* House */}
+                  <div>
+                    <label className="text-sm font-medium text-gray-400 mb-2 block">
+                      House <span className="text-red-400">*</span>
+                    </label>
+                    <select
+                      value={newCandidateData.house || ''}
+                      onChange={(e) => handleAddCandidateChange('house', e.target.value)}
+                      className="w-full px-4 py-2 bg-gray-700/50 border border-gray-600 rounded-lg text-white focus:border-green-500 focus:ring-2 focus:ring-green-500/30"
+                      required
+                    >
+                      <option value="">Select House</option>
+                      <option value="Jinnah">Jinnah</option>
+                      <option value="Khushal">Khushal</option>
+                      <option value="Iqbal">Iqbal</option>
+                      <option value="Ayub">Ayub</option>
+                      <option value="Munawar">Munawar</option>
+                      <option value="Rustam">Rustam</option>
+                    </select>
+                  </div>
+
+                  {/* Profession */}
+                  <div className="md:col-span-2">
+                    <label className="text-sm font-medium text-gray-400 mb-2 block">
+                      Profession <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={newCandidateData.profession || ''}
+                      onChange={(e) => handleAddCandidateChange('profession', e.target.value)}
+                      className="w-full px-4 py-2 bg-gray-700/50 border border-gray-600 rounded-lg text-white focus:border-green-500 focus:ring-2 focus:ring-green-500/30"
+                      required
+                    />
+                  </div>
+
+                  {/* Postal Address */}
+                  <div className="md:col-span-2">
+                    <label className="text-sm font-medium text-gray-400 mb-2 block">
+                      Postal Address <span className="text-gray-500 text-xs">(Optional)</span>
+                    </label>
+                    <textarea
+                      value={newCandidateData.postal_address || ''}
+                      onChange={(e) => handleAddCandidateChange('postal_address', e.target.value)}
+                      className="w-full px-4 py-2 bg-gray-700/50 border border-gray-600 rounded-lg text-white focus:border-green-500 focus:ring-2 focus:ring-green-500/30 resize-none h-24"
+                    />
+                  </div>
+
+                  {/* Attending Gala */}
+                  <div>
+                    <label className="text-sm font-medium text-gray-400 mb-2 block">
+                      Attending Gala <span className="text-red-400">*</span>
+                    </label>
+                    <select
+                      value={newCandidateData.attend_gala || 'Yes'}
+                      onChange={(e) => handleAddCandidateChange('attend_gala', e.target.value)}
+                      className="w-full px-4 py-2 bg-gray-700/50 border border-gray-600 rounded-lg text-white focus:border-green-500 focus:ring-2 focus:ring-green-500/30"
+                      required
+                    >
+                      <option value="Yes">Yes</option>
+                      <option value="No">No</option>
+                    </select>
+                  </div>
+
+                  {/* Morale */}
+                  <div>
+                    <label className="text-sm font-medium text-gray-400 mb-2 block">
+                      Morale <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={newCandidateData.morale || ''}
+                      onChange={(e) => handleAddCandidateChange('morale', e.target.value)}
+                      className="w-full px-4 py-2 bg-gray-700/50 border border-gray-600 rounded-lg text-white focus:border-green-500 focus:ring-2 focus:ring-green-500/30"
+                      required
+                    />
+                  </div>
+
+                  {/* Excited for Gala */}
+                  <div className="md:col-span-2">
+                    <label className="text-sm font-medium text-gray-400 mb-2 block">
+                      Excited for Gala <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={newCandidateData.excited_for_gala || ''}
+                      onChange={(e) => handleAddCandidateChange('excited_for_gala', e.target.value)}
+                      className="w-full px-4 py-2 bg-gray-700/50 border border-gray-600 rounded-lg text-white focus:border-green-500 focus:ring-2 focus:ring-green-500/30"
+                      required
+                    />
+                  </div>
+
+                  {/* Photo URL */}
+                  <div className="md:col-span-2">
+                    <label className="text-sm font-medium text-gray-400 mb-2 block">
+                      Photo URL <span className="text-gray-500 text-xs">(Optional)</span>
+                    </label>
+                    <input
+                      type="url"
+                      value={newCandidateData.photo_url || ''}
+                      onChange={(e) => handleAddCandidateChange('photo_url', e.target.value)}
+                      className="w-full px-4 py-2 bg-gray-700/50 border border-gray-600 rounded-lg text-white focus:border-green-500 focus:ring-2 focus:ring-green-500/30"
+                      placeholder="https://..."
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3 mt-8">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddCandidateModal(false);
+                      setNewCandidateData({
+                        full_name: '',
+                        kit_number: '',
+                        email: '',
+                        whatsapp_number: '',
+                        car_number_plate: '',
+                        house: '',
+                        profession: '',
+                        postal_address: '',
+                        attend_gala: 'Yes',
+                        morale: '',
+                        excited_for_gala: '',
+                        photo_url: '',
+                      });
+                      setAddCandidateMessage(null);
+                    }}
+                    disabled={isAddingCandidate}
+                    className="bg-gray-700 text-white px-6 py-3 rounded-xl font-semibold hover:bg-gray-600 transition-all duration-300 disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isAddingCandidate}
+                    className="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-3 rounded-xl font-semibold hover:from-green-700 hover:to-emerald-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95 disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {isAddingCandidate ? (
+                      <>
+                        <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Adding...
+                      </>
+                    ) : (
+                      'Add Candidate'
+                    )}
                   </button>
                 </div>
               </form>
